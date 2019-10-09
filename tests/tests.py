@@ -3,6 +3,7 @@ import gurobi
 import random
 import oru
 import oru.collect
+import oru.slurm
 import tempfile
 import os
 import itertools
@@ -111,6 +112,13 @@ class CollectTestCase(unittest.TestCase):
         for linkname in itertools.chain(*self.links):
             if os.path.exists(linkname):
                 os.remove(linkname)
+
+class SlurmTests(unittest.TestCase):
+    def test_array_range(self):
+        self.assertEqual(oru.slurm.array_range("0-4"), [0,1,2,3,4])
+        self.assertEqual(oru.slurm.array_range("1,2,1-5:3"), [1,2,4])
+        self.assertEqual(oru.slurm.array_range("1,,1-21:10"), [1,11,21])
+
 
 if __name__ == '__main__':
     unittest.main()
