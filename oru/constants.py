@@ -53,3 +53,4 @@ _GUROBI_MODEL_ATTR = {
 }
 
 INFO_ATTR_TO_MODEL_ATTR = {v: k for k, v in _GUROBI_MODEL_ATTR.items()}
+EPS=1e-4

@@ -10,6 +10,7 @@ import os
 import itertools
 import textwrap
 import tarfile
+import time
 
 class NamedTempfileSetup(unittest.TestCase):
     def setUp(self) -> None:
@@ -164,6 +165,41 @@ class CSVLoggerTestCase(NamedTempfileSetup):
             oru.CSVLog(self.filename, 'r')
             oru.CSVLog(self.filename, 'w+')
             oru.CSVLog(self.filename, 'r+')
+
+
+class TakeTestCase(unittest.TestCase):
+    def test_take(self):
+        self.assertEqual(oru.take({1}), 1)
+        self.assertEqual(oru.take([]), None)
+        self.assertEqual(oru.take([0,1,2]), 0)
+
+
+class NonzeroKeysTestCase(unittest.TestCase):
+    def test_nonzero_key_get(self):
+        d = {'a' : 0, 'b' : 1, 'c' : 1e-6}
+        self.assertEqual(oru.get_keys_with_nonzero_val(d,eps=1e-9), ['b','c'])
+        self.assertEqual(oru.get_keys_with_nonzero_val(d,eps=1e-4), ['b'])
+
+
+class StopwatchTestCase(unittest.TestCase):
+    def test_stopwatch(self):
+        sw = oru.Stopwatch()
+        time.sleep(.01)
+        self.assertEqual(sw.time, 0)
+        sw.start()
+        self.assertTrue(sw.active)
+        time.sleep(.01)
+        a = sw.stop().time
+        self.assertAlmostEqual(a,0.01, places=3)
+        time.sleep(.01)
+        b = sw.stop().time
+        self.assertFalse(sw.active)
+        self.assertEqual(a,b)
+        sw.start()
+        time.sleep(.01)
+        c = sw.stop().time
+        self.assertGreaterEqual(c,b)
+        self.assertAlmostEqual(c, 0.02, places=3)
 
 
 if __name__ == '__main__':

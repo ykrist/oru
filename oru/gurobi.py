@@ -1,10 +1,10 @@
 import dataclasses
-import gurobi
 import json
-from typing import ClassVar
-from .constants import *
 import dacite
 
+from typing import ClassVar
+from .constants import *
+from gurobi import *
 
 @dataclasses.dataclass
 class ModelInformation:
@@ -86,7 +86,7 @@ class LPInformation(ModelInformation):
     kappa : float
 
 
-def extract_information(model: gurobi.Model):
+def extract_information(model: Model):
     if model.IsMIP == 1:
         info_class = MIPInformation
     elif model.IsQP == 1:
@@ -101,3 +101,22 @@ def extract_information(model: gurobi.Model):
         kwargs[attr.name] = attr.type(model.getAttr(INFO_ATTR_TO_MODEL_ATTR[attr.name]))
 
     return info_class(**kwargs)
+
+
+def pprint_constraint(cons : Constr, model : Model, eps=EPS):
+    lhs = ''
+    for var in model.getVars():
+        a = model.getCoeff(cons, var)
+        if abs(a) > eps:
+            if a < 0:
+                sgn = '-'
+            else:
+                sgn = '+'
+            a = abs(a)
+            if abs(a - 1) < eps:
+                a = ''
+            else:
+                a = f'{a:.4g}'
+            lhs += f' {sgn} {a}{var.VarName}'
+
+    print(' '.join([lhs.rstrip().rstrip('+ '), cons.sense, str(cons.RHS)]))
