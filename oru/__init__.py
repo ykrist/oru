@@ -4,6 +4,8 @@ import json
 from typing import ClassVar
 from .constants import *
 import dacite
+from .table import *
+
 
 @dataclasses.dataclass
 class ModelInformation:
@@ -50,13 +52,23 @@ class ModelInformation:
     status : int
 
     def to_json(self, filename):
+        data = dataclasses.asdict(self)
+        data['model_type'] = self.model_type
         with open(filename, 'w') as f:
-            json.dump(dataclasses.asdict(self), f, indent='\t')
+            json.dump(data, f, indent='\t')
 
-    @classmethod
-    def from_json(cls, filename):
+    @staticmethod
+    def from_json(filename):
         with open(filename, 'r') as f:
             data = json.load(f)
+
+        mtype = data.pop('model_type')
+        if mtype == 'MIP':
+            cls = MIPInformation
+        elif mtype in ('QP', 'QCP'):
+            raise NotImplementedError
+        else:
+            cls = LPInformation
 
         return dacite.from_dict(cls, data)
 
