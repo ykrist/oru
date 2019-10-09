@@ -24,7 +24,7 @@ class NamedTempfileSetup(unittest.TestCase):
             os.remove(self.filename)
 
 
-class LPSetupTestCase(unittest.TestCase):
+class LPModelSetup(unittest.TestCase):
     def setUp(self) -> None:
         random.seed(1337)
         self.model = gurobi.Model()
@@ -49,7 +49,7 @@ class LPSetupTestCase(unittest.TestCase):
         os.remove(fp.name)
 
 
-class MIPSetupTestCase(LPSetupTestCase):
+class MIPModelSetup(LPModelSetup):
     def setUp(self) -> None:
         super().setUp()
         for idx in range(len(self.vars)):
@@ -57,7 +57,7 @@ class MIPSetupTestCase(LPSetupTestCase):
         self.model.optimize()
 
 
-class MIPInformationExtractionTestCase(MIPSetupTestCase):
+class MIPInformationExtractionTestCase(MIPModelSetup):
     def test_mip_info(self):
         info = oru.gurobi.extract_information(self.model)
         self.assertIsInstance(info, oru.gurobi.MIPInformation)
@@ -68,7 +68,7 @@ class MIPInformationExtractionTestCase(MIPSetupTestCase):
         self.assertIsInstance(info, oru.gurobi.MIPInformation)
 
 
-class LPInformationExtrationTestCase(LPSetupTestCase):
+class LPInformationExtrationTestCase(LPModelSetup):
     def test_lp_info(self):
         info = oru.gurobi.extract_information(self.model)
         self.assertIsInstance(info, oru.gurobi.LPInformation)
