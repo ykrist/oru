@@ -2,7 +2,7 @@ import csv
 import dataclasses
 import os.path
 import sys
-from . import ModelInformation
+from .gurobi import ModelInformation
 from typing import Sequence
 
 

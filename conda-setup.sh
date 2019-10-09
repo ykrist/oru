@@ -14,7 +14,7 @@ function install {
     echo
     case $RESPONSE in
       y) break ;;
-      n) exit ;;
+      n) exit 0 ;;
     esac
   done
   conda develop .
@@ -26,6 +26,7 @@ function install {
   echo -e "#!/bin/sh\n${ACTIVATE_CMD}" >  $ACTIVATE_FILE
   echo -e "#!/bin/sh\n${DEACTIVATE_CMD}" > $DEACTIVATE_FILE
   echo "successfully installed."
+  exit 0
 };
 
 function uninstall {
@@ -33,10 +34,11 @@ function uninstall {
   rm -f $ACTIVATE_FILE
   rm -f $DEACTIVATE_FILE
   echo "successfully uninstalled."
+  exit 0
 }
 
 if [[ -z $CONDA_PREFIX ]] ; then
-  echo "Error: not in a conda environment."
+  echo "Error: not in a conda environment." >/dev/stderr
   exit 1
 fi
 
@@ -45,10 +47,5 @@ case $1 in
     ;;
   "uninstall") uninstall
     ;;
-  *) echo "Usage: ${0} (install | uninstall)"
+  *) echo "Usage: ${0} (install | uninstall)"  >/dev/stderr ; exit 1
 esac
-
-
-
-exit
-
