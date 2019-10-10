@@ -75,3 +75,22 @@ class HashableFrozenDataclass:
 
     def __hash__(self):
         return self._hash
+
+
+@dataclasses.dataclass(frozen=True)
+class SerialisableFrozenSlottedDataclass:
+    """
+    This is a workaround for allow frozen dataclasses with the __slots__ attribute to be pickled.
+    See `https://stackoverflow.com/questions/55307017/pickle-a-frozen-dataclass-that-has-slots`_.
+    """
+
+    def __getstate__(self):
+        return dict(
+            (slot, getattr(self, slot))
+            for slot in self.__slots__
+            if hasattr(self, slot)
+        )
+
+    def __setstate__(self, state):
+        for slot, value in state.items():
+            object.__setattr__(self, slot, value)

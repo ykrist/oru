@@ -2,9 +2,11 @@ import dataclasses
 import json
 import dacite
 
-from typing import ClassVar
+from typing import ClassVar, Dict, Any, Tuple
 from .constants import *
+from .core import take
 from gurobi import *
+
 
 @dataclasses.dataclass
 class ModelInformation:
@@ -120,3 +122,68 @@ def pprint_constraint(cons : Constr, model : Model, eps=EPS):
             lhs += f' {sgn} {a}{var.VarName}'
 
     print(' '.join([lhs.rstrip().rstrip('+ '), cons.sense, str(cons.RHS)]))
+
+class BaseGurobiModel(Model):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cons: Dict[str, Dict[Any, Constr]] = dict()
+        self.__vardicts__ : Tuple[str] = None
+        self.__intvars__ = None
+        self.__binvars__ = None
+
+
+def _determine_variable_types(model : BaseGurobiModel):
+    intvars = []
+    binvars = []
+    for vargroup in model.__vardicts__:
+        sample_var = take(getattr(model,'_'+vargroup).values())
+        if sample_var.vtype == GRB.BINARY:
+            binvars.append(vargroup)
+        elif sample_var.vtype == GRB.INTEGER:
+            intvars.append(vargroup)
+
+    model.__intvars__ = tuple(intvars)
+    model.__binvars__ = tuple(binvars)
+
+
+def set_variables_continuous(model : BaseGurobiModel):
+    if model.__intvars__ is None or model.__binvars__ is None:
+        _determine_variable_types(model)
+    for vargroup in model.__intvars__ + model.__binvars__:
+        for var in getattr(model,'_'+vargroup).values():
+            var.vtype = GRB.CONTINUOUS
+
+
+def set_variables_integer(model : BaseGurobiModel):
+    for vargroup in model.__intvars__:
+        for var in getattr(model,'_'+vargroup).values():
+            var.vtype = GRB.INTEGER
+
+    for vargroup in model.__binvars__:
+        for var in getattr(model,'_'+vargroup).values():
+            var.vtype = GRB.BINARY
+
+def get_iis_constraints(model : BaseGurobiModel):
+    iis_keys = dict()
+    for name, constrdict in model._cons.items():
+        keys = [k for k,cons in constrdict.items() if cons.IISConstr > 0]
+        if len(keys) > 0:
+            iis_keys[name] = keys
+
+    return iis_keys
+
+
+def update_var_values(model : BaseGurobiModel, where=None, eps = EPS):
+    for vargroup in model.__vardicts__:
+        vardict_attr = '_' + vargroup
+        valdict_attr = vardict_attr + 'v'
+        if where is None:
+            setattr(model, valdict_attr,
+                    {k : var.X for k,var in getattr(model, vardict_attr).items() if var.X > eps})
+        elif where == GRB.Callback.MIPSOL:
+            vardict =  getattr(model, vardict_attr)
+            setattr(model, valdict_attr,
+                    dict((k,v)  for k,v in zip(vardict.keys(), model.cbGetSolution(vardict.values())) if v > eps))
+        else:
+            raise ValueError("`where` is not equal to None or GRB.Callback.MIPSOL.")
+
