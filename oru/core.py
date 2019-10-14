@@ -1,8 +1,9 @@
 from . import constants as _C
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Callable, Any, Union
 import time
 import dataclasses
 import json
+from collections import defaultdict
 
 def take(iterable : Iterable):
     """Pick an arbitrary element of ``iterable``."""
@@ -94,3 +95,34 @@ class SerialisableFrozenSlottedDataclass:
     def __setstate__(self, state):
         for slot, value in state.items():
             object.__setattr__(self, slot, value)
+
+def onerange(stop):
+    return range(1,stop+1)
+
+def group_keys_by_values(d : Dict):
+    gd = defaultdict(list)
+    for k,v in d.items():
+        gd[v].append(k)
+    for val, key_group in gd.items():
+        yield key_group, val
+
+def tuple_select_items(selection, d : Dict):
+    for key,val in d.items():
+        if len(key) != len(selection):
+            raise ValueError(f"`selection` (len={len(selection)}) does not match length of `key`={str(key)} "
+                             f"(len={len(key)})")
+        for x, y in zip(selection, key):
+            if x != '*' and x != y:
+                break
+        else:
+            yield key, val
+
+def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
+    """
+    Return a new dictionary from `d` by appling `func` to all keys.  If `drop_none` is True, then any keys that map to
+    None are ignored.
+    """
+    if drop_none:
+        return dict(filter(lambda kv : kv[0] is not None, zip(map(func, d.keys()), d.values())))
+    else:
+        return dict(zip(map(func, d.keys()), d.values()))
