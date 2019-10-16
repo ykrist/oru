@@ -126,3 +126,97 @@ def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
         return dict(filter(lambda kv : kv[0] is not None, zip(map(func, d.keys()), d.values())))
     else:
         return dict(zip(map(func, d.keys()), d.values()))
+
+def filterl(func,iterable):
+    return list(filter(func, iterable))
+
+
+
+class SurjectiveDict(dict):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._mapped_keys = dict()  # ptr_key -> key
+        self._mapped_keys_inv = defaultdict(set)
+
+    # TODO add tests
+    def share_value(self, new_key, existing_key):
+        assert existing_key in self
+        existing_key = self._mapped_keys.get(existing_key, existing_key)
+        if new_key in self._mapped_keys:
+            self._mapped_keys_inv[self._mapped_keys[new_key]].remove(new_key)
+        elif super().__contains__(new_key):
+            super().__delitem__(new_key)
+
+        self._mapped_keys[new_key] = existing_key
+        self._mapped_keys_inv[existing_key].add(new_key)
+
+    @property
+    def keymap(self):
+        return self._mapped_keys.copy()
+
+    @property
+    def inverse_keymap(self):
+        return dict((k,v) for k,v in self._mapped_keys_inv.items() if len(v) > 0)
+
+    def get_one_to_one(self):
+        return super().copy()
+
+    def unique_items(self):
+        return super().items()
+
+    def unique_keys(self):
+        return super().keys()
+
+    def keys(self):
+        for key in super().keys():
+            yield key
+            for ptr_key in self._mapped_keys_inv[key]:
+                yield ptr_key
+
+    def items(self):
+        for key, val in super().items():
+            yield key,val
+            for ptr_key in self._mapped_keys_inv[key]:
+                yield ptr_key, val
+
+    def copy(self):
+        new = SurjectiveDict(super().copy())
+        new._mapped_keys = self._mapped_keys.copy()
+        new._mapped_keys_inv = self._mapped_keys_inv.copy()
+        return new
+
+    def __len__(self):
+        return len(self._mapped_keys) + super().__len__()
+
+    def __getitem__(self, item):
+        return super().__getitem__(self._mapped_keys.get(item, item))
+
+    def __contains__(self, item):
+        return super().__contains__(self._mapped_keys.get(item, item))
+
+    def __setitem__(self, item, val):
+        return super().__setitem__(self._mapped_keys.get(item, item), val)
+
+    def __delitem__(self, key):
+        if key in self._mapped_keys:
+            del self._mapped_keys[key]
+        else:
+            if len(self._mapped_keys_inv[key]) > 0:
+                # a new key will take over as the parent key
+                new_key = self._mapped_keys_inv[key].pop()
+                # update mappings
+                for k in self._mapped_keys_inv[key]:
+                    self._mapped_keys[k] = new_key
+                self._mapped_keys_inv[new_key] = self._mapped_keys_inv[key]
+                del self._mapped_keys_inv[key]
+                del self._mapped_keys[new_key]
+                # copy data to new parent
+                super().__setitem__(new_key, self[key])
+            super().__delitem__(key)
+
+    def __repr__(self):
+        return '{ ' + ', '.join(f'{repr(k)} : {repr(v)}' for k,v in self.items()) + ' }'
+
+    def __str__(self):
+        return self.__repr__()
