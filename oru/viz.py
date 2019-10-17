@@ -1,6 +1,18 @@
 import numpy as np
-import pygraphviz
 from functools import wraps
+
+def P(a,b):
+    return np.array([a,b])
+
+def perp(p):
+    return P(-p[0],p[1])
+
+def unit(p):
+    return p/np.linalg.norm(p)
+
+def to_polar(p):
+    return np.linalg.norm(p),np.arctan2(p[1],p[0])
+
 
 class Interval:
     def __init__(self,a,b):
@@ -33,6 +45,34 @@ class Rectangle:
     @property
     def end(self):
         return np.array([self.x_bounds.end, self.y_bounds.end])
+
+class Circle:
+    def __init__(self, center=P(0,0), radius=1):
+        self.center=center
+        self.radius=radius
+
+    def __contains__(self, point):
+        return np.linalg.norm(point-self.center) <= self.radius
+
+    def __and__(self, other):
+        d = np.linalg.norm(other.center - self.center)
+
+        if other.radius + self.radius < d  or d <= abs(other.radius-self.radius):
+            return []
+
+        a =  (d**2 + self.radius**2 - other.radius**2 ) / (2*d)
+
+        h = (self.radius**2 - a**2)**0.5
+
+        p = self.center + a*(other.center - self.center)/d
+
+        v = P(h*(other.center[1]-self.center[1])/d, - h*(other.center[0]-self.center[0])/d)
+
+        if np.allclose(v, 0):
+            return [p]
+
+        return [p+v, p-v]
+
 
 
 def check_domain(func):
