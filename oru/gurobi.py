@@ -2,11 +2,12 @@ import dataclasses
 import json
 import dacite
 
-from typing import ClassVar, Dict, Any, Tuple
+from typing import ClassVar, Dict, Any, Tuple, Union
 from .constants import *
 from .core import take
 from gurobi import *
 
+VarDict = Dict[Union[int, Tuple[int,...]], Var]
 
 @dataclasses.dataclass
 class ModelInformation:
@@ -123,14 +124,17 @@ def pprint_constraint(cons : Constr, model : Model, eps=EPS):
 
     print(' '.join([lhs.rstrip().rstrip('+ '), cons.sense, str(cons.RHS)]))
 
+#TODO : switch to a wrapper class, much easier to fiddle with than subclassing
 class BaseGurobiModel(Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._cons: Dict[str, Dict[Any, Constr]] = dict()
-        self.__vardicts__ : Tuple[str] = None
         self.__intvars__ = None
         self.__binvars__ = None
 
+    @property
+    def __vardicts__(self) -> Tuple[str]:
+        raise NotImplementedError
 
 def _determine_variable_types(model : BaseGurobiModel):
     intvars = []
@@ -155,6 +159,9 @@ def set_variables_continuous(model : BaseGurobiModel):
 
 
 def set_variables_integer(model : BaseGurobiModel):
+    if model.__intvars__ is None or model.__binvars__ is None:
+        return
+
     for vargroup in model.__intvars__:
         for var in getattr(model,'_'+vargroup).values():
             var.vtype = GRB.INTEGER
