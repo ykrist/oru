@@ -115,7 +115,7 @@ class TablePrinter:
             self.col_widths = col_widths
 
         self.float_prec = float_prec
-        self.sep = sep
+        self.sep = sep.expandtabs(4)
         self.ncols = len(self.col_widths)
         self.justify = '^'
         self.header = header
@@ -153,9 +153,14 @@ class TablePrinter:
     def print_line(self, *vals):
         if not self._header_printed:
             self._header_printed = True
-            self.print_line(self.header)
+            self.print_line(*self.header)
         print(self.format_line(*vals[:self.ncols]))
         if len(vals) > self.ncols:
             self.print_line(*vals[self.ncols:])
 
+    def print_hline(self):
+        print('-'*self.total_width)
 
+    @property
+    def total_width(self):
+        return sum(self.col_widths) + (len(self.col_widths)-1)*len(self.sep)

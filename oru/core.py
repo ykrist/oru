@@ -220,3 +220,21 @@ class SurjectiveDict(dict):
 
     def __str__(self):
         return self.__repr__()
+
+
+class FrozenOrderedSet(frozenset):
+    def __init__(self, seq=()):
+        super().__init__(seq)
+        self._order = tuple(seq)
+        self._hash = None
+
+    def __hash__(self):
+        if self._hash is None:
+            self._hash = hash(self._order)
+        return self._hash
+
+    def __iter__(self):
+        return iter(self._order)
+
+    def __getitem__(self, item):
+        return self._order[item]
