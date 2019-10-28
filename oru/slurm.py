@@ -80,7 +80,7 @@ class BaseSlurmInfo:
         if "mail-user" not in cl_opts and "mail-type" in cl_opts:
             del cl_opts['mail-type']
 
-        return json.dumps(cl_opts)
+        return json.dumps(cl_opts, indent='\t')
 
 
     @staticmethod
@@ -91,7 +91,7 @@ class BaseSlurmInfo:
         minutes -= hours*60
         days = hours//24
         hours -= days*24
-        return f'{days:d}-{hours:d}:{minutes:d}:{seconds:d}'
+        return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
 
 
 class SlurmArgumentParser(argparse.ArgumentParser):
@@ -107,7 +107,7 @@ class SlurmArgumentParser(argparse.ArgumentParser):
         return ns
 
     def handle_slurm_info(self, slurm_info : BaseSlurmInfo):
-        if self.last_args is not None and self.last_args.slurm_info:
+        if self.last_args is not None and self.last_args.slurminfo:
             print(slurm_info.get_slurminfo_json_string())
             sys.exit(0)
 
