@@ -1,6 +1,6 @@
 #/bin/bash
 set -e
-ORU_ROOT_DIR=$(realpath $0 | xargs dirname)
+ORU_ROOT_DIR=$(readlink -f $0 | xargs dirname)
 ORU_BIN_DIR=$ORU_ROOT_DIR/bin
 ORU_ENV_FILE_NAME="oru_path_env.sh"
 ACTIVATE_DIR=${CONDA_PREFIX}/etc/conda/activate.d
