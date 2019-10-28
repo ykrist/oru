@@ -82,7 +82,7 @@ class CSVLog:
 
 
     def update_header(self):
-        """Update the header in the file, add empty fields if required.  The entire file is re-."""
+        """Update the header in the file, add empty fields if required.  The entire file is must be rewritten."""
         self._fp.seek(0,0)
         lines = self._fp.readlines()
         lines[0] = ",".join(self._columns_order) + "\n"

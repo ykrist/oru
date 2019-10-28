@@ -4,20 +4,19 @@ import os.path
 import sys
 from .gurobi import ModelInformation
 from typing import Sequence
+from .logging import CSVLog
+import json
+from itertools import chain
 
-
-
-def collect_model_info(filelist : Sequence[str], output_file : str = None, strip_directory=True, strip_ext=True):
+def collect_model_info(filelist : Sequence[str], output_file : str = None, strip_directory=True, strip_ext=True,
+                       drop_fields=None):
     def prep_filename(fn):
         if strip_directory:
             fn = os.path.basename(fn)
         if strip_ext:
             fn, _ = os.path.splitext(fn)
         return fn
-    data = ModelInformation.from_json(filelist[0])
-    data = dataclasses.asdict(data)
-    csv_fields = ['name'] + sorted(data.keys())
-    data['name'] = prep_filename(filelist[0])
+
 
     if output_file is None:
         csv_file = sys.stdout
@@ -26,15 +25,26 @@ def collect_model_info(filelist : Sequence[str], output_file : str = None, strip
         csv_file = open(output_file, 'w')
         closefile = True
 
-    csv_writer = csv.DictWriter(csv_file, csv_fields)
-    csv_writer.writeheader()
-    csv_writer.writerow(data)
+    rows = []
+    for f in filelist:
+        with open(f, 'r') as fp:
+            rows.append(json.load(fp))
 
-    for f in filelist[1:]:
-        data = ModelInformation.from_json(f)
-        data = dataclasses.asdict(data)
-        data['name'] = prep_filename(f)
-        csv_writer.writerow(data)
+    csv_fields = set(chain(*map(lambda r : r.keys(), rows)))
+
+    if drop_fields is not None:
+        csv_fields -= set(drop_fields)
+
+    csv_fields = ['index'] + sorted(csv_fields)
+
+
+
+    csv_writer = csv.DictWriter(csv_file, csv_fields, extrasaction='ignore')
+    csv_writer.writeheader()
+
+    for r, fname in zip(rows, filelist):
+        r['index'] = prep_filename(fname)
+        csv_writer.writerow(r)
 
     if closefile:
         csv_file.close()

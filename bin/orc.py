@@ -13,6 +13,7 @@ SBATCH_COMMAND=['sbatch']
 def collect_command(args):
     oru.collect.collect_model_info(filelist=args.files,
                                    output_file=args.output,
+                                   drop_fields=args.drop,
                                    strip_ext=args.se,
                                    strip_directory=args.sd)
 
@@ -75,6 +76,8 @@ if __name__ == '__main__':
                            help="Strip extenstion when converting input filename to CSV index.")
     p_collect.add_argument("-sd", action="store_true",
                            help="Strip directories when converting input filename to CSV index")
+    p_collect.add_argument("-d","--drop", type=str, nargs='+',
+                           help="Drop the following fields from input files.")
     p_collect.set_defaults(func=collect_command)
 
     p_sbatch_harray = sp.add_parser("sbatch_harray")
