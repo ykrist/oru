@@ -48,8 +48,9 @@ def sbatch_harray_command(args):
         command = SBATCH_COMMAND + slurm_args + [bash_script_file.name]
 
         if args.verbose:
-            print(textwrap.fill("SBATCH: " + " ".join(command), 80))
-            print("SCRIPT:\n"+bash_script_contents)
+            print(textwrap.fill(" ".join(command), 80))
+            print(bash_script_file.name.center(80, '-'))
+            print(bash_script_contents)
             print("-"*80)
 
         if not args.dryrun:
@@ -95,7 +96,7 @@ if __name__ == '__main__':
                         "(arguments beginning with `-`, then this list must be prefixed with `--`.")
     p_sbatch_harray.add_argument("array_range", help="Array indices to run over, each array index is passed separately to TARGET.",
                                  type=oru.slurm.array_range)
-
+    p_sbatch_harray.set_defaults(func=sbatch_harray_command)
 
 
 

@@ -119,7 +119,7 @@ SLURM_INFO_OPTIONAL_FIELDS = [
     "nodes",
     "tasks-per-node",
     "memory",
-    "cpus",
+    "cpus-per-task",
     "out",
     "err",
     "constraints",
