@@ -59,7 +59,7 @@ class MIPModelSetup(LPModelSetup):
 
 class MIPInformationExtractionTestCase(MIPModelSetup):
     def test_mip_info(self):
-        info = oru.gurobi.extract_information(self.model)
+        info = oru.gurobi.extract_run_information(self.model)
         self.assertIsInstance(info, oru.gurobi.MIPInformation)
         self._check_info_serialisation(info)
 
@@ -70,7 +70,7 @@ class MIPInformationExtractionTestCase(MIPModelSetup):
 
 class LPInformationExtrationTestCase(LPModelSetup):
     def test_lp_info(self):
-        info = oru.gurobi.extract_information(self.model)
+        info = oru.gurobi.extract_run_information(self.model)
         self.assertIsInstance(info, oru.gurobi.LPInformation)
         self._check_info_serialisation(info)
 
@@ -200,6 +200,37 @@ class StopwatchTestCase(unittest.TestCase):
         c = sw.stop().time
         self.assertGreaterEqual(c,b)
         self.assertAlmostEqual(c, 0.02, places=3)
+
+    def test_stopwatch_named_laps(self):
+        sw = oru.Stopwatch().start()
+        time.sleep(.01) # ACTIVE
+        sw.stop('egg-time')
+        sw.start()
+        time.sleep(.01)  # ACTIVE
+        sw.stop('bacon-time')
+        sw.stop('bacon-time2')
+        sw.start()
+        time.sleep(.02)  # ACTIVE
+        sw.stop('egg-time')
+        sw.start()
+        time.sleep(.01)  # ACTIVE
+        sw.lap('dog')
+        time.sleep(.01)  # ACTIVE
+        sw.lap('lemon')
+        sw.stop()
+        sw.start()  # ACTIVE
+        time.sleep(.03)
+        sw.stop('cat')
+
+        t = sw.time
+        times = sw.times
+        self.assertEqual(set(times.keys()), {"egg-time", "bacon-time", "dog", "cat", "lemon"})
+        self.assertAlmostEqual(t, .09, places=2)
+        self.assertAlmostEqual(times['egg-time'], .02, places=3)
+        self.assertAlmostEqual(times['bacon-time'], .01, places=3)
+        self.assertAlmostEqual(times['dog'], .01, places=3)
+        self.assertAlmostEqual(times['dog'], .01, places=3)
+        self.assertAlmostEqual(times['cat'], .03, places=3)
 
 
 if __name__ == '__main__':

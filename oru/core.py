@@ -23,8 +23,10 @@ class Stopwatch:
     def __init__(self):
         self._start_time = 0
         self._stop_time = 0
-        self._cum_time = 0
+        self._total_time = 0
+        self._lap_time = 0
         self._active = False
+        self._times = dict()
 
     @property
     def active(self):
@@ -34,23 +36,46 @@ class Stopwatch:
         if not self._active:
             self._active = True
             self._start_time = time.time()
+            self._lap_time = 0
         return self
 
-    def stop(self):
+    def stop(self, label=None):
         if self._active:
             self._active = False
             self._stop_time = time.time()
-            self._cum_time += (self._stop_time - self._start_time)
+            self._lap_time = self._stop_time - self._start_time
+            self._total_time += self._lap_time
+            if label is not None:
+                self._times[label] = self._lap_time
+
+        return self
+
+    def lap(self, label):
+        if self.active:
+            self._stop_time = time.time()
+            self._lap_time = self._stop_time - self._start_time
+            self._total_time += self._lap_time
+            self._times[label] = self._lap_time
+            self._start_time = self._stop_time
         return self
 
     @property
     def time(self):
-        if self._active:
-            partial_time = time.time() - self._start_time
+        if self.active:
+            return self._total_time + self.lap_time
         else:
-            partial_time = 0
-        return partial_time + self._cum_time
+            return self._total_time
 
+    @property
+    def lap_time(self):
+        if self._active:
+            return time.time() - self._start_time
+        else:
+            return self._lap_time
+
+    @property
+    def times(self):
+        return self._times
 
 @dataclasses.dataclass
 class JSONSerialisableDataclass:
