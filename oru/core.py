@@ -92,7 +92,7 @@ class JSONSerialisableDataclass:
 
 
 @dataclasses.dataclass(eq=False, frozen=True)
-class HashableFrozenDataclass:
+class LazyHashFrozenDataclass:
     def __post_init__(self):
         hashval = 0
         for f in dataclasses.fields(self):
