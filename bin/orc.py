@@ -48,7 +48,7 @@ def sbatch_harray_command(args):
         command = SBATCH_COMMAND + slurm_args + [bash_script_file.name]
 
         if args.verbose:
-            print(textwrap.fill(" ".join(command), 80))
+            print(" ".join(command))
             print(bash_script_file.name.center(80, '-'))
             print(bash_script_contents)
             print("-"*80)

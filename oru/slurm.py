@@ -67,13 +67,13 @@ class BaseSlurmInfo:
             "job-name" : self.name,
             "out" : self.stdout_log,
             "err" : self.stderr_log,
-            "memory" : self.memory,
+            "mem" : self.memory,
             "cpus-per-task" : self.cpus,
             "nodes" : self.nodes,
             "tasks-per-node" : self.tasks_per_node,
             "mail-user" : self.mail_user,
             "mail-type" : self.mail_type,
-            "constraints" : self.constraints,
+            "constraint" : self.constraints,
             "script" : self.script,
         }
         cl_opts = dict(filter(lambda kv : kv[1] is not None, cl_opts.items()))
@@ -118,11 +118,11 @@ SLURM_INFO_OPTIONAL_FIELDS = [
     "mail-type",
     "nodes",
     "tasks-per-node",
-    "memory",
+    "mem",
     "cpus-per-task",
     "out",
     "err",
-    "constraints",
+    "constraint",
 ]
 SLURM_INFO_REQUIRED_FIELDS = [
     "script"
