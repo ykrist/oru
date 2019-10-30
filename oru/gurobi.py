@@ -190,7 +190,11 @@ def update_var_values(model : BaseGurobiModel, where=None, eps = EPS):
         elif where == GRB.Callback.MIPSOL:
             vardict =  getattr(model, vardict_attr)
             setattr(model, valdict_attr,
-                    dict((k,v)  for k,v in zip(vardict.keys(), model.cbGetSolution(vardict.values())) if v > eps))
+                    dict((k,v) for k,v in zip(vardict.keys(), model.cbGetSolution(vardict.values())) if v > eps))
+        elif where == GRB.Callback.MIPNODE:
+            vardict =  getattr(model, vardict_attr)
+            setattr(model, valdict_attr,
+                    dict((k,v) for k,v in zip(vardict.keys(), model.cbGetNodeRel(vardict.values())) if v > eps))
         else:
-            raise ValueError("`where` is not equal to None or GRB.Callback.MIPSOL.")
+            raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
