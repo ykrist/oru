@@ -4,6 +4,7 @@ import time
 import dataclasses
 import json
 from collections import defaultdict
+import os
 
 def take(iterable : Iterable):
     """Pick an arbitrary element of ``iterable``."""
@@ -263,3 +264,22 @@ class FrozenOrderedSet(frozenset):
 
     def __getitem__(self, item):
         return self._order[item]
+
+
+class FileNameManager:
+    def __init__(self, directory='./', prefix='', create_dirs=False):
+        if create_dirs:
+            os.makedirs(directory, exist_ok=True)
+        self.directory = directory
+        self.prefix = prefix
+        self.paths = set()
+
+    def __call__(self, suffix, prefix=True, ignore_duplicates=False):
+        if prefix:
+            path = os.path.join(self.directory, self.prefix + suffix)
+        else:
+            path = os.path.join(self.directory, suffix)
+        if not ignore_duplicates and path in self.paths:
+            raise Exception(f"{path} may be duplicated.")
+        self.paths.add(path)
+        return path
