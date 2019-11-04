@@ -2,8 +2,28 @@ import argparse
 import json
 import re
 import sys
+import os
+import cerberus
+import hashlib
 
-class BaseSlurmInfo:
+SLURM_INFO_OPTIONAL_FIELDS = [
+    "job-name",
+    "time",
+    "mail-user",
+    "mail-type",
+    "nodes",
+    "tasks-per-node",
+    "mem",
+    "cpus-per-task",
+    "out",
+    "err",
+    "constraint",
+]
+SLURM_INFO_REQUIRED_FIELDS = [
+    "script"
+]
+
+class BaseSlurmResources:
     def __init__(self, job_index):
         self.job_index = job_index
         self.logdir = '.'
@@ -57,7 +77,7 @@ class BaseSlurmInfo:
 
     @property
     def script(self):
-        raise NotImplemented
+        raise NotImplementedError
 
 
     def get_slurminfo_json_string(self):
@@ -94,41 +114,6 @@ class BaseSlurmInfo:
         return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
 
 
-class SlurmArgumentParser(argparse.ArgumentParser):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.add_argument("--slurminfo", action='store_true')
-        self.add_argument("job_index", metavar="IDX", type=int)
-        self.last_args = None
-
-    def parse_args(self, *args, **kwargs):
-        ns = super().parse_args(*args, **kwargs)
-        self.last_args = ns
-        return ns
-
-    def handle_slurm_info(self, slurm_info : BaseSlurmInfo):
-        if self.last_args is not None and self.last_args.slurminfo:
-            print(slurm_info.get_slurminfo_json_string())
-            sys.exit(0)
-
-SLURM_INFO_OPTIONAL_FIELDS = [
-    "job-name",
-    "time",
-    "mail-user",
-    "mail-type",
-    "nodes",
-    "tasks-per-node",
-    "mem",
-    "cpus-per-task",
-    "out",
-    "err",
-    "constraint",
-]
-SLURM_INFO_REQUIRED_FIELDS = [
-    "script"
-]
-
-
 def parse_slurm_info(jsonstr):
     info = json.loads(jsonstr)
     info_fields = set(info.keys())
@@ -140,6 +125,7 @@ def parse_slurm_info(jsonstr):
         raise KeyError(f"Unknown JSON fields:\n\t" + "\n\t".join(unknown_fields))
     non_slurm_info = {key : info.pop(key) for key in ["script"]}
     return info, non_slurm_info
+
 
 def array_range(str):
     tokens = list(filter(lambda x : len(x) > 0, str.split(",")))
@@ -153,4 +139,100 @@ def array_range(str):
             indices.update(range(int(groups['start']), int(groups['stop'])+1, int(groups['step'])))
     return sorted(indices)
 
+
+def _validate_and_raise(validator, document, schema=None):
+    valid = validator.validate(document, schema)
+    if not valid:
+        raise ValueError(validator.errors)
+    return validator.document
+
+
+def _remove_delayed(d):
+    d = d.copy()
+    for key in list(d.keys()):
+        if d[key].pop("delayed", False):
+            del d[key]
+    return d
+
+
+class Experiment:
+    INPUTS = {"index" : {"type" : "int", "min" : 0}}
+    OUTPUTS = None
+    PARAMETERS = {}
+    RESOURCES = None
+    ROOT_PATH = "."
+    PATH_SEP = "_"
+    PARSER = argparse.ArgumentParser()
+    PARSER.add_argument("--slurminfo", action='store_true')
+    PARSER.add_argument("index", metavar="IDX", type=int)
+
+
+    def __init__(self, inputs, outputs, parameters=None):
+        if parameters is None:
+            parameters = dict()
+
+        v = cerberus.Validator(require_all=True)
+
+        self.inputs = _validate_and_raise(v, inputs, _remove_delayed(self.INPUTS))
+        self.outputs = _validate_and_raise(v, outputs, _remove_delayed(self.OUTPUTS))
+        self.parameters = _validate_and_raise(v, parameters, _remove_delayed(self.PARAMETERS))
+        self._directory = None
+        self._parameter_string = None
+
+        self.define_delayed()
+
+        self.inputs = _validate_and_raise(v, self.inputs, self.INPUTS)
+        self.parameters = _validate_and_raise(v, self.parameters, self.PARAMETERS)
+        self.outputs = _validate_and_raise(v, self.outputs, self.OUTPUTS)
+
+        if self.RESOURCES is not None:
+            self.resources = self.RESOURCES(self)
+        else:
+            self.resources = None
+
+    @classmethod
+    def from_cl_args(cls, args=None):
+        if args is None:
+            args = sys.argv[1:]
+        args = vars(cls.PARSER.parse_args(args))
+        slurminfo = args.pop("slurminfo")
+        experiment = cls(args, {})
+        if slurminfo:
+            if experiment.resources is None:
+                raise  NotImplementedError
+            print(experiment.resources.get_slurminfo_json_string())
+            sys.exit(0)
+        return experiment
+
+    def define_delayed(self):
+        """
+        Any inputs/outputs/parameters with the `delayed` rule set must be specified here.
+        """
+        pass
+
+    @property
+    def parameter_string(self):
+        if self._parameter_string is None:
+            s =  json.dumps(self.parameters, sort_keys=True)
+            self._parameter_string = hashlib.blake2b(s.encode(), digest_size=8).hexdigest()
+        return self._parameter_string
+
+    @property
+    def input_string(self):
+        return self.PATH_SEP.join(str(self.inputs[iname]) for iname in sorted(self.inputs.keys()))
+
+    @property
+    def directory(self):
+        if self._directory is None:
+            self._directory = os.path.join(self.ROOT_PATH, self.parameter_string)
+            os.makedirs(self._directory, exist_ok=True)
+            paramsfile = os.path.join(self._directory, "parameters.json")
+            if not os.path.exists(paramsfile):
+                with open(paramsfile, 'w') as fp:
+                    json.dump(self.parameters, fp, indent='\t')
+
+        return self._directory
+
+    def get_output_path(self, suffix):
+        return os.path.join(self.directory, self.input_string + self.PATH_SEP + suffix)
 
