@@ -5,6 +5,9 @@ import dataclasses
 import json
 from collections import defaultdict
 import os
+import functools
+
+memoise = functools.lru_cache(maxsize=None)
 
 def take(iterable : Iterable):
     """Pick an arbitrary element of ``iterable``."""
@@ -145,13 +148,20 @@ def tuple_select_items(selection, d : Dict):
 
 def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
     """
-    Return a new dictionary from `d` by appling `func` to all keys.  If `drop_none` is True, then any keys that map to
+    Return a new dictionary from `d` by applying `func` to all keys.  If `drop_none` is True, then any keys that map to
     None are ignored.
     """
     if drop_none:
         return dict(filter(lambda kv : kv[0] is not None, zip(map(func, d.keys()), d.values())))
     else:
         return dict(zip(map(func, d.keys()), d.values()))
+
+
+def expand_sparse_dict(d : Dict, keyfunc : Callable):
+    for kp in list(d.keys()):
+        for k in keyfunc(kp):
+            d[k] = d[kp]
+
 
 def filterl(func,iterable):
     return list(filter(func, iterable))

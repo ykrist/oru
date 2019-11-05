@@ -7,8 +7,17 @@ import textwrap
 import subprocess
 import sys
 import tempfile
+import fnmatch
+import json
+from collections import defaultdict
 
 SBATCH_COMMAND=['sbatch']
+
+def error(*args, exit=True, **kwargs):
+    kwargs['file'] = sys.stderr
+    print('error:', *args, **kwargs)
+    if exit:
+        sys.exit(1)
 
 def collect_command(args):
     oru.collect.collect_model_info(filelist=args.files,
@@ -63,8 +72,100 @@ def sbatch_harray_command(args):
 
         os.remove(bash_script_file.name)
 
+def _dict_recursive_update(target, other):
+    for key,val in target.items():
+        if key in other:
+            other_val = other[key]
+            if isinstance(val, dict) and isinstance(other_val, dict):
+                target[key] = _dict_recursive_update(val, other_val)
+            else:
+                target[key] = other[key]
+
+    for key, val in other.items():
+        if key not in target:
+            target[key] = other[key]
+    return target
+
+def _dict_nested_keys_to_dot_name(d, _prefix='', _pred=()):
+    names = {}
+    if len(_prefix) > 0:
+        _prefix += "."
+    for key in d:
+        nested_key = _pred + (key,)
+        dotname = _prefix + key
+        if isinstance(d[key], dict):
+            names.update(_dict_nested_keys_to_dot_name(d[key], _prefix=dotname, _pred=nested_key))
+        names[nested_key] = dotname
+    return names
+
+def _dict_rec_delete(d, rec_key):
+    if len(rec_key) == 1:
+        del d[rec_key[0]]
+    else:
+        if rec_key[0] in d:
+            _dict_rec_delete(d[rec_key[0]], rec_key[1:])
+
+def _dict_rec_insert(d, rec_key, val):
+    if len(rec_key) == 1:
+        d[rec_key[0]] = val
+    else:
+        if rec_key[0] not in d:
+            d[rec_key[0]] = {}
+        _dict_rec_insert(d[rec_key[0]], rec_key[1:], val)
+
+def _dict_rec_get(d, rec_key):
+    if len(rec_key) == 1:
+        return d[rec_key[0]]
+    else:
+        return _dict_rec_get(d[rec_key[0]], rec_key[1:])
+
+def json_command(args):
+    input_files = args.input
+    if input_files.count('-') > 1:
+        error('STDIN given multiple times.')
+
+    data = dict()
+    for f in input_files:
+        if f == '-':
+            new_data = json.loads(sys.stdin.read())
+        else:
+            with open(f, 'r') as fp:
+                new_data = json.load(fp)
+        _dict_recursive_update(data, new_data)
+
+    if args.patterns is not None:
+        dotnames = _dict_nested_keys_to_dot_name(data)
+        dotnames_inv = {v : k for k,v in dotnames.items()}
+        match = set()
+        for pattern in args.patterns:
+            match.update(map(lambda x : dotnames_inv[x], fnmatch.filter(dotnames_inv, pattern)))
+
+        match = sorted(match, key=lambda x : (len(x),) + x)
+        new_data = {}
+        reckeys_by_length = defaultdict(set)
+        for reckey in match:
+            reckeys_by_length[len(reckey)].add(reckey)
+        reckeys_by_length.default_factory = None
+
+        for keylen in sorted(reckeys_by_length.keys()):
+            for reckey in reckeys_by_length[keylen]:
+                if keylen-1 in reckeys_by_length and reckey[:-1] in reckeys_by_length[keylen-1]:
+                    continue
+                val = _dict_rec_get(data, reckey)
+                _dict_rec_insert(new_data, reckey, val)
+
+        data = new_data
+
+    if args.output is not None:
+        with open(args.output, 'w') as fp:
+            json.dump(data ,fp)
+    else:
+        print(json.dumps(data, indent='\t'))
+
+
 
 if __name__ == '__main__':
+
     main_p = argparse.ArgumentParser()
     sp = main_p.add_subparsers(required=True)
 
@@ -98,8 +199,19 @@ if __name__ == '__main__':
                                  type=oru.slurm.array_range)
     p_sbatch_harray.set_defaults(func=sbatch_harray_command)
 
-
-
+    p_json = sp.add_parser("json")
+    p_json.add_argument("input", type=str, nargs='+',
+                        help='input JSON file, set to - for STDIN.  Multiple input files can be specified: they'
+                             'will be merged recursively before any operations.')
+    p_json.add_argument("-o", "--output", type=str,
+                        help="output to file instead of STDOUT (default).")
+    p_json.add_argument("-f", "--field", type=str, dest='patterns', action='append',
+                        help="Extract fields from JSON.  Use a `.` to access nested fields.  "
+                             "Standard wildcard matching is supported.  Use this option multiple times to specify"
+                             " several patterns at once")
+    p_json.add_argument("-p", "--print", action='store_true',
+                        help="Pretty print the output rather than output a JSON string (the default).")
+    p_json.set_defaults(func=json_command)
 
     if len(sys.argv) > 1:
         args = main_p.parse_args(sys.argv[1:])

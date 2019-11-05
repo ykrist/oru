@@ -5,8 +5,9 @@ import sys
 import os
 import cerberus
 import hashlib
+from typing import Dict, Tuple
 
-SLURM_INFO_OPTIONAL_FIELDS = [
+SLURM_INFO_OPTIONAL_FIELDS = (
     "job-name",
     "time",
     "mail-user",
@@ -18,101 +19,10 @@ SLURM_INFO_OPTIONAL_FIELDS = [
     "out",
     "err",
     "constraint",
-]
-SLURM_INFO_REQUIRED_FIELDS = [
-    "script"
-]
-
-class BaseSlurmResources:
-    def __init__(self, job_index):
-        self.job_index = job_index
-        self.logdir = '.'
-
-    @property
-    def nodes(self) -> str:
-        return "1"
-
-    @property
-    def tasks_per_node(self) -> str:
-        return "1"
-
-    @property
-    def mail_user(self) -> str:
-        return None
-
-    @property
-    def mail_type(self) -> str:
-        return "FAIL"
-
-    @property
-    def memory(self) -> str:
-        """Should return memory to be allocated in MB"""
-        return None
-
-    @property
-    def time(self) -> str:
-        """Should return time to be allocated in seconds"""
-        return None
-
-    @property
-    def cpus(self) -> str:
-        """Should return time to be allocated in seconds"""
-        return None
-
-    @property
-    def stdout_log(self) -> str:
-        return f'{self.logdir}/{self.name}.out'
-
-    @property
-    def stderr_log(self) -> str:
-        return f'{self.logdir}/{self.name}.err'
-
-    @property
-    def name(self) -> str:
-        return f'%j-{self.job_index:d}'
-
-    @property
-    def constraints(self) -> str:
-        return None
-
-    @property
-    def script(self):
-        raise NotImplementedError
-
-
-    def get_slurminfo_json_string(self):
-
-        cl_opts = {
-            "time" : self.time,
-            "job-name" : self.name,
-            "out" : self.stdout_log,
-            "err" : self.stderr_log,
-            "mem" : self.memory,
-            "cpus-per-task" : self.cpus,
-            "nodes" : self.nodes,
-            "tasks-per-node" : self.tasks_per_node,
-            "mail-user" : self.mail_user,
-            "mail-type" : self.mail_type,
-            "constraint" : self.constraints,
-            "script" : self.script,
-        }
-        cl_opts = dict(filter(lambda kv : kv[1] is not None, cl_opts.items()))
-        if "mail-user" not in cl_opts and "mail-type" in cl_opts:
-            del cl_opts['mail-type']
-
-        return json.dumps(cl_opts, indent='\t')
-
-
-    @staticmethod
-    def format_time(seconds : int) -> str:
-        minutes = seconds//60
-        seconds -= minutes*60
-        hours = minutes//60
-        minutes -= hours*60
-        days = hours//24
-        hours -= days*24
-        return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
-
+)
+SLURM_INFO_REQUIRED_FIELDS = (
+    "script",
+)
 
 def parse_slurm_info(jsonstr):
     info = json.loads(jsonstr)
@@ -147,25 +57,27 @@ def _validate_and_raise(validator, document, schema=None):
     return validator.document
 
 
-def _remove_delayed(d):
+def _remove_derived(d):
     d = d.copy()
     for key in list(d.keys()):
-        if d[key].pop("delayed", False):
+        if d[key].pop("derived", False):
             del d[key]
     return d
 
+_CERBERBUS_TYPE_TO_PYTHON_TYPE = {
+ "integer" : int,
+ "float" : float,
+ "boolean" : bool,
+ "string" : str,
+ "number" : float
+}
 
 class Experiment:
-    INPUTS = {"index" : {"type" : "int", "min" : 0}}
+    INPUTS = {"index" : {"type" : "integer", "min" : 0}}
     OUTPUTS = None
     PARAMETERS = {}
-    RESOURCES = None
     ROOT_PATH = "."
     PATH_SEP = "_"
-    PARSER = argparse.ArgumentParser()
-    PARSER.add_argument("--slurminfo", action='store_true')
-    PARSER.add_argument("index", metavar="IDX", type=int)
-
 
     def __init__(self, inputs, outputs, parameters=None):
         if parameters is None:
@@ -173,45 +85,46 @@ class Experiment:
 
         v = cerberus.Validator(require_all=True)
 
-        self.inputs = _validate_and_raise(v, inputs, _remove_delayed(self.INPUTS))
-        self.outputs = _validate_and_raise(v, outputs, _remove_delayed(self.OUTPUTS))
-        self.parameters = _validate_and_raise(v, parameters, _remove_delayed(self.PARAMETERS))
+        self.inputs = _validate_and_raise(v, inputs, _remove_derived(self.INPUTS))
+        self.outputs = _validate_and_raise(v, outputs, _remove_derived(self.OUTPUTS))
+        self.parameters = _validate_and_raise(v, parameters, _remove_derived(self.PARAMETERS))
         self._directory = None
         self._parameter_string = None
 
-        self.define_delayed()
+        self.define_derived()
 
         self.inputs = _validate_and_raise(v, self.inputs, self.INPUTS)
         self.parameters = _validate_and_raise(v, self.parameters, self.PARAMETERS)
         self.outputs = _validate_and_raise(v, self.outputs, self.OUTPUTS)
 
-        if self.RESOURCES is not None:
-            self.resources = self.RESOURCES(self)
-        else:
-            self.resources = None
-
     @classmethod
     def from_cl_args(cls, args=None):
+        """Alternate constructor."""
+        p = argparse.ArgumentParser()
+        cl_args = cls.get_parser_arguments()
+        for pargs, pkwargs in cl_args.values():
+            p.add_argument(*pargs, **pkwargs)
         if args is None:
             args = sys.argv[1:]
-        args = vars(cls.PARSER.parse_args(args))
-        slurminfo = args.pop("slurminfo")
-        experiment = cls(args, {})
+        inputs = vars(p.parse_args(args))
+        parameters = {pname : inputs.pop(pname) for pname in cls.PARAMETERS}
+        slurminfo = inputs.pop("slurminfo")
+        experiment = cls(inputs, {}, parameters)
         if slurminfo:
-            if experiment.resources is None:
-                raise  NotImplementedError
-            print(experiment.resources.get_slurminfo_json_string())
+            print(experiment.get_slurminfo_json_string())
             sys.exit(0)
         return experiment
 
-    def define_delayed(self):
+    def define_derived(self):
         """
-        Any inputs/outputs/parameters with the `delayed` rule set must be specified here.
+        Any inputs/outputs/parameters with the `derived` rule set must be defined here.
         """
         pass
 
     @property
     def parameter_string(self):
+        """A string which should be filesystem friendly and unique for unique parameters. Note this is
+        technically not unique, but the chances of a hash collision is about 10**10 times smaller than me winning lotto"""
         if self._parameter_string is None:
             s =  json.dumps(self.parameters, sort_keys=True)
             self._parameter_string = hashlib.blake2b(s.encode(), digest_size=8).hexdigest()
@@ -219,10 +132,12 @@ class Experiment:
 
     @property
     def input_string(self):
+        """A string which should be filesystem friendly and unique for unique inputs."""
         return self.PATH_SEP.join(str(self.inputs[iname]) for iname in sorted(self.inputs.keys()))
 
     @property
     def directory(self):
+        """Directory in which experiment results shall be placed."""
         if self._directory is None:
             self._directory = os.path.join(self.ROOT_PATH, self.parameter_string)
             os.makedirs(self._directory, exist_ok=True)
@@ -230,9 +145,138 @@ class Experiment:
             if not os.path.exists(paramsfile):
                 with open(paramsfile, 'w') as fp:
                     json.dump(self.parameters, fp, indent='\t')
-
         return self._directory
 
     def get_output_path(self, suffix):
-        return os.path.join(self.directory, self.input_string + self.PATH_SEP + suffix)
+        """Output files should be created using a file path obtained from this method."""
+        if not suffix.startswith('.'):
+            suffix = self.PATH_SEP + suffix
+        return os.path.join(self.directory, self.input_string + suffix)
 
+    @classmethod
+    def get_parser_arguments(cls) -> Dict[str, Tuple[Tuple, Dict]]:
+        """Using the non-derived inputs and parameters, create an ArgumentParser to parse these from the command line.
+        This should return a dictionary mapping an input/parameter name to args and kwargs, which will be
+         to ArgumentParser.add_argument (see argparse docs)"""
+        cl_arguments =  {"slurminfo" : (("--slurminfo",), {'action':'store_true'})}
+        for name, rules in cls.INPUTS.items():
+            if rules.get('derived', False):
+                continue
+            kwargs = {}
+            argtype = rules.get('type', None)
+
+            if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
+                kwargs["type"] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
+
+            cl_arguments[name] = ((name,), kwargs)
+
+        for name, rules in cls.PARAMETERS.items():
+            if rules.get('derived', False):
+                continue
+
+            argname = "--" + name.replace("_", "-")
+            kwargs = {"dest" : name}
+            if 'default' in rules:
+                kwargs['default'] = rules['default']
+                kwargs['required'] = False
+            else:
+                kwargs['required'] = True
+            argtype = rules.get('type', None)
+            if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
+                kwargs['type'] =  _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
+                if kwargs['type'] == bool:
+                    if kwargs.pop('default', False):
+                        argname = "--no-" + name.replace("_", "-")
+                        kwargs["help"] = "Disable " + name
+                        kwargs['action'] = 'store_false'
+                    else:
+                        kwargs["help"] = "Enable " + name
+                        kwargs['action'] = 'store_true'
+                    del kwargs['type']
+
+            cl_arguments[name] = ((argname, ), kwargs)
+
+        return cl_arguments
+
+    @property
+    def resource_nodes(self) -> str:
+        return "1"
+
+    @property
+    def resource_tasks_per_node(self) -> str:
+        return "1"
+
+    @property
+    def resource_mail_user(self) -> str:
+        return None
+
+    @property
+    def resource_mail_type(self) -> str:
+        return "FAIL"
+
+    @property
+    def resource_memory(self) -> str:
+        """Should return memory to be allocated in MB"""
+        return None
+
+    @property
+    def resource_time(self) -> str:
+        """Should return time to be allocated in seconds"""
+        return None
+
+    @property
+    def resource_cpus(self) -> str:
+        """Should return time to be allocated in seconds"""
+        return None
+
+    @property
+    def resource_stdout_log(self) -> str:
+        return self.get_output_path('.out')
+
+    @property
+    def resource_stderr_log(self) -> str:
+        return self.get_output_path('.err')
+
+    @property
+    def resource_name(self) -> str:
+        return '%j-{index:d}'.format_map(self.inputs)
+
+    @property
+    def resource_constraints(self) -> str:
+        return None
+
+    @property
+    def resource_slurm_script(self):
+        raise NotImplementedError
+
+    def get_slurminfo_json_string(self):
+        cl_opts = {
+            "time" : self.resource_time,
+            "job-name" : self.resource_name,
+            "out" : self.resource_stdout_log,
+            "err" : self.resource_stderr_log,
+            "mem" : self.resource_memory,
+            "cpus-per-task" : self.resource_cpus,
+            "nodes" : self.resource_nodes,
+            "tasks-per-node" : self.resource_tasks_per_node,
+            "mail-user" : self.resource_mail_user,
+            "mail-type" : self.resource_mail_type,
+            "constraint" : self.resource_constraints,
+            "script" : self.resource_slurm_script,
+        }
+        cl_opts = dict(filter(lambda kv : kv[1] is not None, cl_opts.items()))
+        if "mail-user" not in cl_opts and "mail-type" in cl_opts:
+            del cl_opts['mail-type']
+
+        return json.dumps(cl_opts, indent='\t')
+
+    @staticmethod
+    def format_time(seconds : int) -> str:
+        seconds = int(seconds)
+        minutes = seconds//60
+        seconds -= minutes*60
+        hours = minutes//60
+        minutes -= hours*60
+        days = hours//24
+        hours -= days*24
+        return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
