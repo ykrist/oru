@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+import oru.slurm
+import argparse
+import subprocess
+import sys
+import tempfile
+import os
+
+SBATCH_COMMAND = ['sbatch']
+
+
+def sbatch_harray(args):
+    for i in args.array_range:
+        slurm_info_proc = subprocess.run(["python", args.target, '--slurminfo'] + args.target_args + [str(i)],
+                                         text=True, stdout=subprocess.PIPE)
+        if slurm_info_proc.returncode != 0:
+            print(f"failed: TARGET return exit code: {slurm_info_proc.returncode:d}")
+            sys.exit(1)
+        else:
+            try:
+                slurm_info, other_info = oru.slurm.parse_slurm_info(slurm_info_proc.stdout)
+            except Exception as e:
+                print(f"failed: ", str(e))
+                sys.exit(1)
+
+        python_command = ["python", args.target] + args.target_args + [str(i)]
+        bash_script_contents = other_info['script'].format(
+            python_command=" ".join(python_command)
+        )
+
+        bash_script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+        bash_script_file.file.write(bash_script_contents)
+        bash_script_file.file.close()
+
+        slurm_args = []
+        for key, val in slurm_info.items():
+            slurm_args.extend(("--" + key, val))
+
+        command = SBATCH_COMMAND + slurm_args + [bash_script_file.name]
+
+        if args.verbose:
+            print(" ".join(command))
+            print(bash_script_file.name.center(80, '-'))
+            print(bash_script_contents)
+            print("-" * 80)
+
+        if not args.dryrun:
+            result = subprocess.run(command, stderr=subprocess.STDOUT)
+            result.check_returncode()
+            if result.returncode != 0:
+                print(f"command `{' '.join(command)}` exit with nonzero status {result.returncode:d}:")
+                os.remove(bash_script_file.name)
+                sys.exit(1)
+
+        os.remove(bash_script_file.name)
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser()
+    p.add_argument("-v", "--verbose", action='store_true')
+    p.add_argument("--dryrun", action='store_true',
+                   help="Don't submit anything.  Useful for debugging.")
+    p.add_argument("target",
+                   help="target file to run.  The TARGET must accept a --slurmid switch, and when given this option, "
+                        "should print a JSON string to STDOUT containing all the necessary information before "
+                        "exiting.  Furthermore, the last positional argument of TARGET must be an integer; "
+                        "this is what is passed to the TARGET based on the "
+                        "supplied ARRAY_RANGE.  Thus TARGET must support usage as follows: "
+                        "`target --slurmid [target_args]"
+                        "idx`.")
+    p.add_argument("target_args", nargs="*",
+                   help="Arguments to pass through to TARGET.  If optional arguments are being passed to TARGET "
+                        "(arguments beginning with `-`, then this list must be prefixed with `--`.")
+    p.add_argument("array_range",
+                   help="Array indices to run over, each array index is passed separately to TARGET.",
+                   type=oru.slurm.array_range)
+
+    args = p.parse_args(sys.argv[1:])
+    sbatch_harray(args)
