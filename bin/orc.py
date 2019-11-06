@@ -40,10 +40,9 @@ def sbatch_harray_command(args):
                 print(f"failed: ", str(e))
                 sys.exit(1)
 
+        python_command = ["python", args.target] + args.target_args + [str(i)]
         bash_script_contents = other_info['script'].format(
-            python_script=args.target,
-            job_index=i,
-            time_limit=slurm_info['time']
+            python_command=" ".join(python_command)
         )
 
         bash_script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
@@ -188,7 +187,7 @@ if __name__ == '__main__':
     p_sbatch_harray.add_argument("target",
                                  help="target file to run.  The TARGET must accept a --slurmid option, and when given this option, "
                         "should print a JSON string to STDOUT containing all the necessary information (see TODO) before "
-                        "exiting.  Furthermore, the last"
+                        "exiting.  Furthermore, the last positional"
                         " argument of TARGET must be an integer; this is what is passed to the TARGET based on the "
                         "supplied ARRAY_RANGE.  Thus TARGET must have usage as follows: `target [args] [--slurmid] "
                         "idx`.")
