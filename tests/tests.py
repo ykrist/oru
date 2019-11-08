@@ -81,12 +81,12 @@ class LPInformationExtrationTestCase(LPModelSetup):
 
 class TableTestCase(unittest.TestCase):
     def test_min_col_width(self):
-        table = oru.TablePrinter(["egg", "bacon", "minisoda"], min_col_width=7, sep="|", delay_header_print=True)
+        table = oru.TablePrinter(["egg", "bacon", "minisoda"], min_col_width=7, sep="|", print_header=True)
         line = table.format_line(1,2,3)
         self.assertEqual(line, "      1|      2|       3")
 
     def test_justify(self):
-        table = oru.TablePrinter(["1234", "12345", "1234"], justify="^", sep="|", delay_header_print=True)
+        table = oru.TablePrinter(["1234", "12345", "1234"], justify="^", sep="|", print_header=True)
         line = table.format_line(1,1,11)
         self.assertEqual(line," 1  |  1  | 11 ")
 

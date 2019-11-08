@@ -1,4 +1,5 @@
 import os
+from typing import Sequence
 
 class CSVLog:
     def __init__(self, filename, mode='x', index=None):
@@ -105,7 +106,7 @@ class CSVLog:
 
 class TablePrinter:
     def __init__(self, header, float_prec=2, justify='>', sep=' ', min_col_width=4, col_widths=None,
-                 delay_header_print=False):
+                 print_header=True):
         self.min_col_width = min_col_width
         if col_widths is None:
             self.col_widths = list(map(lambda x : max(len(x), self.min_col_width), header))
@@ -113,28 +114,34 @@ class TablePrinter:
             if len(col_widths) != len(header):
                 raise ValueError("length of col_widths does not match length of header")
             self.col_widths = col_widths
+        if isinstance(justify, (list, tuple)):
+            if len(justify) != len(header):
+                raise ValueError("length of justify does not match length of header")
+            self.justify = justify
+        elif isinstance(justify, str):
+            self.justify = [justify] * len(header)
+        else:
+            raise TypeError("justify must of type str or List[str]")
 
         self.float_prec = float_prec
         self.sep = sep.expandtabs(4)
         self.ncols = len(self.col_widths)
-        self.justify = '^'
         self.header = header
-        self._header_printed = ~delay_header_print
-        if not delay_header_print:
+        if print_header:
             self.print_line(*header)
-        self.justify = justify
+
 
 
     def format_float(self, val, col_idx):
-        fmt_str = f'{{:{self.justify}{self.col_widths[col_idx]:d}.{self.float_prec:d}f}}'
+        fmt_str = f'{{:{self.justify[col_idx]}{self.col_widths[col_idx]:d}.{self.float_prec:d}f}}'
         return fmt_str.format(val)
 
     def format_string(self, val, col_idx):
-        fmt_str = f'{{:{self.justify}{self.col_widths[col_idx]:d}s}}'
+        fmt_str = f'{{:{self.justify[col_idx]}{self.col_widths[col_idx]:d}s}}'
         return fmt_str.format(val)
 
     def format_int(self, val, col_idx):
-        fmt_str = f'{{:{self.justify}{self.col_widths[col_idx]:d}d}}'
+        fmt_str = f'{{:{self.justify[col_idx]}{self.col_widths[col_idx]:d}d}}'
         return fmt_str.format(val)
 
     def format_val(self, val, col_idx):
@@ -151,9 +158,6 @@ class TablePrinter:
         return self.sep.join(self.format_val(v,i) for i,v in enumerate(vals))
 
     def print_line(self, *vals):
-        if not self._header_printed:
-            self._header_printed = True
-            self.print_line(*self.header)
         print(self.format_line(*vals[:self.ncols]))
         if len(vals) > self.ncols:
             self.print_line(*vals[self.ncols:])

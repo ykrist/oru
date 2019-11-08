@@ -6,6 +6,7 @@ import os
 import cerberus
 import hashlib
 from typing import Dict, Tuple
+from .logging import TablePrinter
 
 SLURM_INFO_OPTIONAL_FIELDS = (
     "job-name",
@@ -72,6 +73,15 @@ _CERBERBUS_TYPE_TO_PYTHON_TYPE = {
  "number" : float
 }
 
+def _get_domain_help(rules):
+    if 'min' in rules and 'max' in rules:
+        return  "Must be between {} and {}, inclusive".format(str(rules['min']), str(rules['max']))
+    elif 'min' in rules:
+        return  "Must be at least {}".format(str(rules['min']))
+    elif 'max' in rules:
+        return "Must be at most {}".format(str(rules['max']))
+    return ""
+
 class Experiment:
     INPUTS = {"index" : {"type" : "integer", "min" : 0}}
     OUTPUTS = None
@@ -107,8 +117,12 @@ class Experiment:
         if args is None:
             args = sys.argv[1:]
         inputs = vars(p.parse_args(args))
-        parameters = {pname : inputs.pop(pname) for pname in cls.PARAMETERS}
+        paramsfile = inputs.pop("load_params")
         slurminfo = inputs.pop("slurminfo")
+        parameters = {pname : inputs.pop(pname) for pname in cls.PARAMETERS}
+        if paramsfile is not None:
+            with open(paramsfile, 'r') as fp:
+                parameters = json.load(fp)
         experiment = cls(inputs, {}, parameters)
         if slurminfo:
             print(experiment.get_slurminfo_json_string())
@@ -158,17 +172,29 @@ class Experiment:
         """Using the non-derived inputs and parameters, create an ArgumentParser to parse these from the command line.
         This should return a dictionary mapping an input/parameter name to args and kwargs, which will be
          to ArgumentParser.add_argument (see argparse docs)"""
-        cl_arguments =  {"slurminfo" : (("--slurminfo",), {'action':'store_true'})}
+        cl_arguments =  {
+            "slurminfo" : (("--slurminfo",),
+                           {'action':'store_true',
+                            'help' : "print SLURM information as a JSON string and exit."}),
+            "load_params" : (("--load-params",),
+                             {'type' : str,
+                              'help' : "Load parameters from a JSON file.  All parameter-related arguments are ignored.",
+                              "default" : None,
+                              'metavar' : "JSONFILE"
+                            })
+        }
         for name, rules in cls.INPUTS.items():
             if rules.get('derived', False):
                 continue
             kwargs = {}
             argtype = rules.get('type', None)
-
+            kwargs['help'] = "Input: {}.  ".format(name) + _get_domain_help(rules)
             if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
                 kwargs["type"] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
 
+
             cl_arguments[name] = ((name,), kwargs)
+
 
         for name, rules in cls.PARAMETERS.items():
             if rules.get('derived', False):
@@ -187,12 +213,16 @@ class Experiment:
                 if kwargs['type'] == bool:
                     if kwargs.pop('default', False):
                         argname = "--no-" + name.replace("_", "-")
-                        kwargs["help"] = "Disable " + name
+                        kwargs["help"] = "Parameter: disable " + name
                         kwargs['action'] = 'store_false'
                     else:
-                        kwargs["help"] = "Enable " + name
+                        kwargs["help"] = "Parameter: enable " + name
                         kwargs['action'] = 'store_true'
                     del kwargs['type']
+                else:
+                    kwargs['help'] = "Parameter: {}.  ".format(name) + _get_domain_help(rules)
+                    if not kwargs['required']:
+                        kwargs['help'] += " (default is %(default)s)"
 
             cl_arguments[name] = ((argname, ), kwargs)
 
@@ -280,3 +310,22 @@ class Experiment:
         days = hours//24
         hours -= days*24
         return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
+
+    def print_summary_table(self,col_widths=(30, 50), justify=(">", "<")):
+        output = TablePrinter(["", ""], print_header=False, col_widths=col_widths, justify=justify)
+        output.print_hline()
+        output.print_line("Input", "Value")
+        output.print_hline()
+        for k in sorted(self.inputs):
+            output.print_line(k, self.inputs[k])
+        output.print_hline()
+        output.print_line("Parameter", "Value")
+        output.print_hline()
+        for k in sorted(self.parameters):
+            output.print_line(k, self.parameters[k])
+        output.print_hline()
+        output.print_line("Output", "Value")
+        output.print_hline()
+        for k in sorted(self.outputs):
+            output.print_line(k, self.outputs[k])
+        output.print_hline()

@@ -9,7 +9,7 @@ import os
 SBATCH_COMMAND = ['sbatch']
 
 
-def sbatch_harray(args):
+def main(args):
     for i in args.array_range:
         slurm_info_proc = subprocess.run(["python", args.target, '--slurminfo'] + args.target_args + [str(i)],
                                          text=True, stdout=subprocess.PIPE)
@@ -76,4 +76,4 @@ if __name__ == '__main__':
                    type=oru.slurm.array_range)
 
     args = p.parse_args(sys.argv[1:])
-    sbatch_harray(args)
+    main(args)
