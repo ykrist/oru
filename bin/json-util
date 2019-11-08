@@ -6,6 +6,14 @@ import sys
 import itertools
 import fnmatch
 import json
+from oru import map_keys
+from typing import Dict, Tuple, Any
+from functools import reduce
+NestedDict = Dict[str,Dict]
+Key = str
+TupleKey = Tuple[Key,...]
+FlatDict = Dict[TupleKey, Any]
+
 
 def convert_filename(fn, args):
     if not args.kd:
@@ -21,7 +29,7 @@ def error(*args, exit=True, **kwargs):
     if exit:
         sys.exit(1)
 
-def recursive_merge(d1, d2):
+def recursive_merge(d1 : NestedDict, d2 : NestedDict) -> NestedDict:
     """Merge dictionaries d1 and d2 recursively.  Values from d2 take precedence."""
     new = d1.copy()
 
@@ -40,7 +48,7 @@ def recursive_merge(d1, d2):
     return new
 
 
-def flatten_dictionary(d, _prefix=()):
+def flatten_dictionary(d : NestedDict, _prefix=()) -> FlatDict:
     new_d = {}
     for key in d:
         new_key = _prefix + (key,)
@@ -50,7 +58,7 @@ def flatten_dictionary(d, _prefix=()):
             new_d[new_key] = d[key]
     return new_d
 
-def restore_dictionary(d):
+def unflatten_dictionary(d : FlatDict) -> NestedDict:
     new_d = {}
     for reckey in d:
         current_d = new_d
@@ -61,48 +69,64 @@ def restore_dictionary(d):
         current_d[reckey[-1]] = d[reckey]
     return new_d
 
+def expand_tuplekeys(d : FlatDict, sep : str) ->  FlatDict:
+    return map_keys(lambda tuplekey : tuple(k for key in tuplekey for k in key.split(sep)), d)
+
+def join_tuplekeys(d : FlatDict, sep : str) -> Dict[str, Any]:
+    return map_keys(lambda tuplekey : sep.join(tuplekey),d)
+
+
+
 
 
 def main(args):
-    input_files = args.input
-    if input_files.count('-') > 1:
+    if args.input.count('-') > 1:
         error('STDIN given multiple times.')
 
-    if args.insert is not None:
-        if len(input_files) <= 1:
-            error("At least 2 input files are required.")
-        elif len(input_files)  - 1 < len(args.insert):
-            error("Too many field names.")
-        args.insert.extend(map(lambda fn : convert_filename(fn, args), input_files[len(args.insert)+1:]))
-
     data = []
-    for i,f in enumerate(input_files):
+    input_files = []
+    for i,f in enumerate(args.input):
         if f == '-':
-            input_files[i] = 'STDIN'
+            stdin_filelist_idx = i
             d = json.loads(sys.stdin.read())
+            if not isinstance(d, list):
+                d = [d]
+            if len(d) > 1:
+                input_files.extend([f"STDIN{i:d}" for i in range(len(d))])
+            elif len(d) == 1:
+                input_files.append("STDIN")
+            data.extend(d)
+
         else:
             with open(f, 'r') as fp:
-                d = json.load(fp)
-        if len(data) > 0:
-            if args.merge:
-                data[0] = recursive_merge(data[0], d)
-            elif args.insert is not None:
-                data[0][args.insert[i-1]] = d
-        else:
-            data.append(d)
+                data.append(json.load(fp))
+            input_files.append(f)
+
+    if args.insert is not None:
+        if len(data) <= 1:
+            error("At least 2 inputs are required.")
+        elif len(data)  - 1 < len(args.insert):
+            error("Too many field names: {} field names but only {} inputs.".format(len(args.insert), len(data)))
+        args.insert.extend(map(lambda fn : convert_filename(fn, args), input_files[len(args.insert)+1:]))
+
+    if args.merge:
+        data = [reduce(recursive_merge, data)]
+    elif args.insert is not None:
+        for i in reversed(range(1, len(data))):
+            data[0][args.insert[i-1]] = data.pop(-1)
+
 
     if args.merge or args.insert is not None:
         input_files = ['MERGED']
 
-    restore = False
-    if args.patterns is not None or args.csv:
-        restore = not (args.flatten or args.csv)
-        args.flatten = True
 
-
-    if args.flatten:
+    if args.csv or args.flatten or args.patterns is not None or args.unflatten:
         for i in range(len(data)):
             data[i] = flatten_dictionary(data[i])
+
+    if args.unflatten:
+        for i in range(len(data)):
+            data[i] = expand_tuplekeys(data[i], args.level_sep)
 
     if args.patterns is not None:
         for i in range(len(data)):
@@ -114,12 +138,12 @@ def main(args):
                 else:
                     del data[i][key]
 
-    if restore:
+    if args.csv or args.flatten:
         for i in range(len(data)):
-            data[i] = restore_dictionary(data[i])
-    elif args.flatten:
+            data[i] = join_tuplekeys(data[i], args.level_sep)
+    elif args.patterns is not None or args.unflatten:
         for i in range(len(data)):
-            data[i] = {args.level_sep.join(k) : v for k,v in data[i].items()}
+            data[i] = unflatten_dictionary(data[i])
 
     if args.output is not None:
         fp = open(args.output, 'w')
@@ -151,39 +175,56 @@ def main(args):
             data = data[0]
         json.dump(data ,fp, indent='\t')
         fp.write('\n')
+
     if closefile:
         fp.close()
 
 
 if __name__ == '__main__':
-    p = argparse.ArgumentParser()
+    p = argparse.ArgumentParser(add_help=False)
     p.add_argument("input", type=str, nargs='+',
-                   help='Input JSON files, set to - for STDIN. ')
-    p.add_argument("-o", "--output", type=str, default=None,
-                   help="Save the result to a file rather than printing to STDOUT.")
-    group = p.add_mutually_exclusive_group()
-    group.add_argument("-i", "--insert", nargs='*', type=str,
-                   help="Insert all JSON files after the first, into the first.  "
-                        "For each input JSON file after the first, this option requires a JSON field name to be "
-                        "supplied.")
-    group.add_argument("-m", "--merge", action='store_true',
-                   help= "Merge input files recursively before any operations.")
-    p.add_argument("--flatten", action='store_true',
-                   help="Flatten JSON to produce output that is exactly 1 level deep.")
-    p.add_argument("-l","--level-sep",type=str,default='.',
-                   help="Separator to use for JSON levels whhen producing flattened output, and specifying "
-                        "filter patterns.  Defaults is `.`")
-    p.add_argument("-ke", action="store_true",
+                   help='Input JSON files, set to - for STDIN. If the top-level JSON object to STDIN is an array,'
+                        ' each element in this array will be treated as a separate JSON input.  '
+                        'Useful for chaining %(prog)s commands together in a pipeline.')
+
+    generaloptions = p.add_argument_group("general options")
+    generaloptions.add_argument("-h","--help", action='help')
+    generaloptions.add_argument("-l","--level-sep",type=str,default='.',metavar='SEP',
+                   help="Separator to use to identifying JSON levels when producing flattening/unflattening, "
+                        "and specifying. Default is `%(default)s`")
+    generaloptions.add_argument("-ke", action="store_true",
                    help="Keep file extension when converting input filenames")
-    p.add_argument("-kd", action="store_true",
+    generaloptions.add_argument("-kd", action="store_true",
                    help="Keep directories when converting input filenames")
-    p.add_argument("-f", "--filter", type=str, dest='patterns', action='append',
-                   help="Select fields from JSON file.  Use a `.` to access nested fields.  "
+    generaloptions.add_argument("-f", "--filter", type=str, dest='patterns', action='append',
+                   help="Select fields from JSON file(s).  Use a SEP (see --level-sep) to access nested fields.  "
                          "Standard wildcard matching is supported.  Use this option multiple times to specify"
                          " several patterns at once")
-    p.add_argument("--csv", action='store_true',
-                   help="Convert 1 or more JSON files into a CSV file, where each JSON file is one row in the output."
-                        "Implies `--flatten`.")
+
+    preprocessing = p.add_argument_group("preprocessing options")
+    preprocessing = preprocessing.add_mutually_exclusive_group()
+    preprocessing.add_argument("-i", "--insert", nargs='*', type=str, metavar="FIELD",
+                   help="Insert all JSON files after the first, into the first.  "
+                        "For each input JSON file after the first, a JSON field name may be supplied.")
+    preprocessing.add_argument("-m", "--merge", action='store_true',
+                   help= "Merge input files recursively before any operations.")
+
+
+    outputcontrol = p.add_argument_group("output control",
+                                         description="The default output is JSON to STDOUT, multiple outputs are"
+                                                     " concatenated into a JSON array of objects.")
+    outputcontrol.add_argument("-o", "--output", type=str, default=None,
+                   help="Save the result to a file rather than printing to STDOUT.")
+    outputcontrol = outputcontrol.add_mutually_exclusive_group()
+    outputcontrol.add_argument("--flatten", action='store_true',
+                   help="Produce JSON output that is exactly 1 level deep.")
+    outputcontrol.add_argument("--unflatten", action='store_true',
+                   help="Convert flattened JSON to nested JSON (inverse of --flatten).")
+    outputcontrol.add_argument("--csv", action='store_true',
+                   help="Convert into a CSV file, where each JSON output is one row in the output.  "
+                        "Nested JSON keys will be converted to column names in the same manner as `--flatten`.")
+
+
     # p.add_argument("-p", "--print", action='store_true',
     #                help="Pretty print the output rather than output a JSON string (the default).")
 
