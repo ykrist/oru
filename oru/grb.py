@@ -2,11 +2,12 @@ import dataclasses
 import json
 import dacite
 
-from typing import ClassVar, Dict, Any, Tuple, Union, NewType
+from typing import ClassVar, Dict, Any, Tuple, Union, NewType, Callable
 from .constants import _GUROBI_MODEL_ATTR, INFO_ATTR_TO_MODEL_ATTR, EPS
 from .core import take, JSONSerialisableDataclass
 from gurobi import *
 from functools import wraps
+from collections import deque
 
 VarDict = Dict[Union[int, Tuple[int, ...]], Var]
 
@@ -76,6 +77,10 @@ class ModelInformation(JSONSerialisableDataclass):
     # LP-only
     kappa: float
 
+def _wrap_callback(callback):
+    def wrapped_callback(model : Model, where):
+        return callback(model._parent, where)
+    return wrapped_callback
 
 def pprint_constraint(cons: Constr, model: Model, eps=EPS):
     lhs = ''
@@ -496,7 +501,7 @@ class ModelWrapper:
             return None
 
     def addConstr(self, lhs, sense=None, rhs=None, name=""):
-        self.model.addConstr(lhs, sense, rhs, name)
+        return self.model.addConstr(lhs, sense, rhs, name)
 
     def addConstrs(self, constrs, name=""):
         return self.model.addConstrs(constrs, name=name)
@@ -538,7 +543,6 @@ class ModelWrapper:
         return self.model.addVars(*indexes, lb=lb, ub=ub, obj=obj, vtype=vtype, name=name)
 
     def cbCut(self, lhs, sense=None, rhs=None):
-        # TODO fix signature and store cuts if asked
         return self.model.cbCut(lhs, rhs, sense)
 
     def cbGet(self, what):
@@ -551,7 +555,6 @@ class ModelWrapper:
         return self.model.cbGetSolution(vars)
 
     def cbLazy(self, lhs, sense=None, rhs=None):
-        # TODO fix signature and store cuts
         return self.model.cbLazy(lhs, rhs, sense)
 
     def cbSetSolution(self, vars, values):
@@ -674,8 +677,12 @@ class ModelWrapper:
     def message(self, msg):
         return self.model.message(msg)
 
-    def optimize(self):
-        return self.model.optimize()
+    def optimize(self, callback=None):
+        if callback is None:
+            return self.model.optimize()
+        else:
+
+            return self.model.optimize(_wrap_callback(callback))
 
     def presolve(self):
         return self.model.presolve()
@@ -755,6 +762,7 @@ class BaseGurobiModel(ModelWrapper):
         self.__binvars__ = tuple(self.__binvars__)
         self.__ctsvars__ = tuple(self.__ctsvars__)
         self.__vars__ = self.__ctsvars__ + self.__binvars__ + self.__intvars__
+        self.cut_cache = dict()
         self.cons: Dict[str, Dict[Any, Constr]] = dict()
 
     def set_vardicts(self, **kwargs):
@@ -772,7 +780,7 @@ class BaseGurobiModel(ModelWrapper):
 
     def set_variables_continuous(self):
         for vargroup in self.__intvars__ + self.__binvars__:
-            for var in getattr(self, '_' + vargroup).values():
+            for var in getattr(self, vargroup).values():
                 var.vtype = GRB.CONTINUOUS
 
     def set_variables_integer(self):
@@ -781,7 +789,7 @@ class BaseGurobiModel(ModelWrapper):
                 var.vtype = GRB.INTEGER
 
         for vargroup in self.__binvars__:
-            for var in getattr(self, '_' + vargroup).values():
+            for var in getattr(self, vargroup).values():
                 var.vtype = GRB.BINARY
 
     def get_iis_constraints(self):
@@ -795,7 +803,7 @@ class BaseGurobiModel(ModelWrapper):
 
     def update_var_values(self, where=None, eps=EPS):
         for vargroup in self.__vars__:
-            vardict_attr = '_' + vargroup
+            vardict_attr = vargroup
             valdict_attr = vardict_attr + 'v'
             if where is None:
                 setattr(self, valdict_attr,
@@ -811,8 +819,16 @@ class BaseGurobiModel(ModelWrapper):
             else:
                 raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
-    def flush_cuts(self):
-        pass  # TODO implement
+    def flush_cut_cache(self):
+        for constraint_name in self.cut_cache:
+            if isinstance(self.cut_cache[constraint_name], dict):
+                self.cons[constraint_name] = dict()
+                for idx, cut in self.cut_cache[constraint_name].items():
+                    self.cons[idx] = self.addConstr(cut)
+            else:
+                self.cons[constraint_name] = [self.addConstr(cut) for cut in self.cut_cache[constraint_name]]
+
+        self.cut_cache.clear()
 
     def get_model_information(self) -> ModelInformation:
         kwargs = {}
@@ -824,3 +840,23 @@ class BaseGurobiModel(ModelWrapper):
             kwargs[attr.name] = val
 
         return ModelInformation(**kwargs)
+
+    def _add_cut_to_cache(self, cut, cache, cache_key=None):
+        if cache_key is not None:
+            if cache not in self.cut_cache:
+                self.cut_cache[cache] = dict()
+            self.cut_cache[cache][cache_key] = cut
+        else:
+            if cache not in self.cut_cache:
+                self.cut_cache[cache] = deque()
+            self.cut_cache[cache].append(cut)
+
+    def cbCut(self, cut : TempConstr, cache : str =None, cache_key=None):
+        super().cbCut(cut)
+        if cache is not None:
+            self._add_cut_to_cache(cut, cache, cache_key)
+
+    def cbLazy(self, cut : TempConstr, cache : str =None, cache_key=None):
+        super().cbLazy(cut)
+        if cache is not None:
+            self._add_cut_to_cache(cut, cache, cache_key)

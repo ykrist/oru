@@ -125,8 +125,10 @@ class SerialisableFrozenSlottedDataclass:
         for slot, value in state.items():
             object.__setattr__(self, slot, value)
 
-def onerange(stop):
-    return range(1,stop+1)
+def onerange(start,stop=None):
+    if stop is None:
+        return range(1,start+1)
+    return range(start, stop+1)
 
 def group_keys_by_values(d : Dict):
     gd = defaultdict(list)
