@@ -6,6 +6,11 @@ import sys
 import itertools
 import fnmatch
 import json
+import signal
+
+# Make python simply stop when piping into head/tail (SIG_DFL is the "default" signal - i.e. don't let python
+# handle SIGPIPE and throw and exception).
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 def convert_filename(fn, args):
     if not args.kd:
@@ -83,13 +88,18 @@ def main(args):
         else:
             with open(f, 'r') as fp:
                 d = json.load(fp)
-        if len(data) > 0:
-            if args.merge:
-                data[0] = recursive_merge(data[0], d)
-            elif args.insert is not None:
-                data[0][args.insert[i-1]] = d
+
+        if len(data) == 0:
+            data.append(d)
+            continue
+
+        if args.merge:
+            data[0] = recursive_merge(data[0], d)
+        elif args.insert is not None:
+            data[0][args.insert[i-1]] = d
         else:
             data.append(d)
+
 
     if args.merge or args.insert is not None:
         input_files = ['MERGED']
@@ -145,6 +155,7 @@ def main(args):
         for r, fname in zip(data, input_files):
             r[index_field_name] = convert_filename(fname, args)
             csv_writer.writerow(r)
+            fp.flush()
 
     else:
         if len(data) == 1:
