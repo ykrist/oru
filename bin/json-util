@@ -6,13 +6,21 @@ import sys
 import itertools
 import fnmatch
 import json
+import signal
+
 from oru import map_keys
 from typing import Dict, Tuple, Any
 from functools import reduce
+
 NestedDict = Dict[str,Dict]
 Key = str
 TupleKey = Tuple[Key,...]
 FlatDict = Dict[TupleKey, Any]
+
+
+# Make python simply stop when piping into head/tail (SIG_DFL is the "default" signal - i.e. don't let python
+# handle SIGPIPE and throw and exception).
+signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
 def convert_filename(fn, args):
@@ -116,6 +124,7 @@ def main(args):
             data[0][args.insert[i-1]] = data.pop(-1)
 
 
+
     if args.merge or args.insert is not None:
         input_files = ['MERGED']
 
@@ -169,6 +178,7 @@ def main(args):
         for r, fname in zip(data, input_files):
             r[index_field_name] = convert_filename(fname, args)
             csv_writer.writerow(r)
+            fp.flush()
 
     else:
         if len(data) == 1:
