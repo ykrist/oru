@@ -824,7 +824,7 @@ class BaseGurobiModel(ModelWrapper):
             if isinstance(self.cut_cache[constraint_name], dict):
                 self.cons[constraint_name] = dict()
                 for idx, cut in self.cut_cache[constraint_name].items():
-                    self.cons[idx] = self.addConstr(cut)
+                    self.cons[constraint_name][idx] = self.addConstr(cut)
             else:
                 self.cons[constraint_name] = [self.addConstr(cut) for cut in self.cut_cache[constraint_name]]
 
@@ -860,3 +860,23 @@ class BaseGurobiModel(ModelWrapper):
         super().cbLazy(cut)
         if cache is not None:
             self._add_cut_to_cache(cut, cache, cache_key)
+
+class TempModelParameters:
+    """
+    Context manager which temporarily sets parameters and restores them after.
+    """
+    def __init__(self, model : BaseGurobiModel, **param_val_pairs):
+        self.model = model
+        self.old_parameters = dict()
+        self.new_parameters = param_val_pairs
+        for param,new_val in param_val_pairs.items():
+            _,_, old_val,_,_,_ = model.getParamInfo(param)
+            self.old_parameters[param] = old_val
+
+    def __enter__(self):
+        for param, val in self.new_parameters.items():
+            self.model.setParam(param, val)
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        for param,val in self.old_parameters.items():
+            self.model.setParam(param,val)

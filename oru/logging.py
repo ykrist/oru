@@ -157,7 +157,11 @@ class TablePrinter:
             vals = vals + tuple('' for _ in range(self.ncols - len(vals)))
         return self.sep.join(self.format_val(v,i) for i,v in enumerate(vals))
 
-    def print_line(self, *vals):
+    def print_line(self, *vals, pad_left=False, fill=""):
+        if len(vals) < self.ncols and pad_left:
+            vals = (self.ncols-len(vals))*(fill,) + vals
+        else:
+            vals = vals + (self.ncols-len(vals))*(fill,)
         print(self.format_line(*vals[:self.ncols]))
         if len(vals) > self.ncols:
             self.print_line(*vals[self.ncols:])
