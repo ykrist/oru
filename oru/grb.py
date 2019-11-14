@@ -820,15 +820,18 @@ class BaseGurobiModel(ModelWrapper):
                 raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
     def flush_cut_cache(self):
+        total =0
         for constraint_name in self.cut_cache:
             if isinstance(self.cut_cache[constraint_name], dict):
                 self.cons[constraint_name] = dict()
                 for idx, cut in self.cut_cache[constraint_name].items():
                     self.cons[constraint_name][idx] = self.addConstr(cut)
+                    total += 1
             else:
                 self.cons[constraint_name] = [self.addConstr(cut) for cut in self.cut_cache[constraint_name]]
-
+                total += 1
         self.cut_cache.clear()
+        return total
 
     def get_model_information(self) -> ModelInformation:
         kwargs = {}
