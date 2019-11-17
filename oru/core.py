@@ -1,5 +1,5 @@
 from . import constants as _C
-from typing import Dict, Iterable, Callable, Any, Union
+from typing import Dict, Iterable, Callable, Any, Union, Mapping
 import time
 import dataclasses
 import json
@@ -157,6 +157,32 @@ def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
         return dict(filter(lambda kv : kv[0] is not None, zip(map(func, d.keys()), d.values())))
     else:
         return dict(zip(map(func, d.keys()), d.values()))
+
+
+
+def rec_items(mapping : Mapping, _prefix=()):
+    """Returns an iterator to yield key-value pairs from nested dictionaries recursively.  The nested keys from nested
+    dictionaries will be given as a tuple.  Eg, if d[0]['a'] = 'x', then the iterator will contain ((0,'a'), 'x').
+    Items are returned in depth-first order."""
+    for k,v in mapping.items():
+        k = _prefix + (k,)
+        if isinstance(v, Mapping):
+            for item in rec_items(v, _prefix=k):
+                yield item
+        else:
+            yield (k,v)
+
+def rec_keys(mapping : Mapping):
+    for k in rec_items(mapping):
+        yield k
+
+def rec_values(mapping : Mapping):
+    for v in mapping.values():
+        if isinstance(v, Mapping):
+            for vd in rec_values(v):
+                yield vd
+        else:
+            yield v
 
 
 def expand_sparse_dict(d : Dict, keyfunc : Callable):
