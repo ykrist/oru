@@ -156,9 +156,8 @@ class Experiment:
             self._directory = os.path.join(self.ROOT_PATH, self.parameter_string)
             os.makedirs(self._directory, exist_ok=True)
             paramsfile = os.path.join(self._directory, "parameters.json")
-            if not os.path.exists(paramsfile):
-                with open(paramsfile, 'w') as fp:
-                    json.dump(self.parameters, fp, indent='\t')
+            with open(paramsfile, 'w') as fp:
+                json.dump(self.parameters, fp, indent='\t')
         return self._directory
 
     def get_output_path(self, suffix):
@@ -188,10 +187,9 @@ class Experiment:
                 continue
             kwargs = {}
             argtype = rules.get('type', None)
-            kwargs['help'] = "Input: {}.  ".format(name) + _get_domain_help(rules)
+            kwargs['help'] = "Input: {}.  ".format(name) + _get_domain_help(rules) + ".  "
             if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
                 kwargs["type"] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
-
 
             cl_arguments[name] = ((name,), kwargs)
 
@@ -223,6 +221,7 @@ class Experiment:
                     kwargs['help'] = "Parameter: {}.  ".format(name) + _get_domain_help(rules)
                     if not kwargs['required']:
                         kwargs['help'] += " (default is %(default)s)"
+                    kwargs['help'] += ".  "
 
             cl_arguments[name] = ((argname, ), kwargs)
 

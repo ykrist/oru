@@ -754,7 +754,8 @@ class BaseGurobiModel(ModelWrapper):
             elif attrtype == VarDict:
                 raise TypeError("VarDict should not be used to denote variables, use BinVarDict, IntVarDict or "
                                 "CtsVarDict instead.")
-
+            else:
+                continue
             setattr(self, attrname, attrtype())
             setattr(self, attrname + 'v', dict())
 
@@ -763,6 +764,7 @@ class BaseGurobiModel(ModelWrapper):
         self.__ctsvars__ = tuple(self.__ctsvars__)
         self.__vars__ = self.__ctsvars__ + self.__binvars__ + self.__intvars__
         self.cut_cache = dict()
+        self.cut_cache_size = 0
         self.cons: Dict[str, Dict[Any, Constr]] = dict()
 
     def set_vardicts(self, **kwargs):
@@ -831,6 +833,7 @@ class BaseGurobiModel(ModelWrapper):
                 self.cons[constraint_name] = [self.addConstr(cut) for cut in self.cut_cache[constraint_name]]
                 total += 1
         self.cut_cache.clear()
+        self.cut_cache_size = 0
         return total
 
     def get_model_information(self) -> ModelInformation:
@@ -849,10 +852,12 @@ class BaseGurobiModel(ModelWrapper):
             if cache not in self.cut_cache:
                 self.cut_cache[cache] = dict()
             self.cut_cache[cache][cache_key] = cut
+            self.cut_cache_size += 1
         else:
             if cache not in self.cut_cache:
                 self.cut_cache[cache] = deque()
             self.cut_cache[cache].append(cut)
+            self.cut_cache_size += 1
 
     def cbCut(self, cut : TempConstr, cache : str =None, cache_key=None):
         super().cbCut(cut)
@@ -863,6 +868,10 @@ class BaseGurobiModel(ModelWrapper):
         super().cbLazy(cut)
         if cache is not None:
             self._add_cut_to_cache(cut, cache, cache_key)
+
+    def temp_params(self, **param_val_pairs):
+        return TempModelParameters(self, **param_val_pairs)
+
 
 class TempModelParameters:
     """
