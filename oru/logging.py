@@ -108,6 +108,7 @@ class TablePrinter:
     def __init__(self, header, float_prec=2, justify='>', sep=' ', min_col_width=4, col_widths=None,
                  print_header=True):
         self.min_col_width = min_col_width
+        header = [str(s) for s in header]
         if col_widths is None:
             self.col_widths = list(map(lambda x : max(len(x), self.min_col_width), header))
         else:
