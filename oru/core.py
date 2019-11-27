@@ -199,6 +199,19 @@ def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
         return dict(zip(map(func, d.keys()), d.values()))
 
 
+def rev_enumerate(iterable, length=None):
+    try:
+        length = len(iterable)
+    except AttributeError:
+        if length is None:
+            raise Exception("Either the iterable must have __len__, or length must be given.")
+
+    idx = length-1
+    for item in reversed(iterable):
+        yield idx, item
+        idx -= 1
+
+
 
 def rec_items(mapping : Mapping, _prefix=()):
     """Returns an iterator to yield key-value pairs from nested dictionaries recursively.  The nested keys from nested
