@@ -26,7 +26,6 @@ class CtsVarDict(VarDict):
 
 @dataclasses.dataclass
 class ModelInformation(JSONSerialisableDataclass):
-    model_type: ClassVar[str] = ''
     barr_iters: int
     is_multiobj: bool
     max_coeff: float
