@@ -23,6 +23,16 @@ class IntVarDict(VarDict):
 class CtsVarDict(VarDict):
     pass
 
+class CtsVar(Var):
+    pass
+
+class BinVar(Var):
+    pass
+
+class IntVar(Var):
+    pass
+
+
 
 @dataclasses.dataclass
 class ModelInformation(JSONSerialisableDataclass):
@@ -740,23 +750,37 @@ class ModelWrapper:
 class BaseGurobiModel(ModelWrapper):
     def __init__(self, name=""):
         super().__init__(name=name)
+        self.__lonevars__ = []
         self.__intvars__ = []
         self.__binvars__ = []
         self.__ctsvars__ = []
         for attrname, attrtype in self.__annotations__.items():  # Black 3.7 magic
             if attrtype == BinVarDict:
                 self.__binvars__.append(attrname)
+            elif attrtype == BinVar:
+                self.__binvars__.append(attrname)
+                self.__lonevars__.append(attrname)
             elif attrtype == IntVarDict:
                 self.__intvars__.append(attrname)
+            elif attrtype == IntVar:
+                self.__intvars__.append(attrname)
+                self.__lonevars__.append(attrname)
             elif attrtype == CtsVarDict:
                 self.__ctsvars__.append(attrname)
-            elif attrtype == VarDict:
-                raise TypeError("VarDict should not be used to denote variables, use BinVarDict, IntVarDict or "
-                                "CtsVarDict instead.")
+            elif attrtype == CtsVar:
+                self.__ctsvars__.append(attrname)
+                self.__lonevars__.append(attrname)
+            elif attrtype in (VarDict,Var):
+                raise TypeError("VarDict/Var should not be used to denote variables, use BinVarDict, IntVarDict or "
+                                "CtsVarDict, or their *Var equivalents instead.")
             else:
                 continue
-            setattr(self, attrname, attrtype())
-            setattr(self, attrname + 'v', dict())
+            if attrname in self.__lonevars__:
+                setattr(self, attrname, None)
+                setattr(self, attrname + 'v', None)
+            else:
+                setattr(self, attrname, attrtype())
+                setattr(self, attrname + 'v', dict())
 
         self.__intvars__ = tuple(self.__intvars__)
         self.__binvars__ = tuple(self.__binvars__)
@@ -766,7 +790,7 @@ class BaseGurobiModel(ModelWrapper):
         self.cut_cache_size = 0
         self.cons: Dict[str, Dict[Any, Constr]] = dict()
 
-    def set_vardicts(self, **kwargs):
+    def set_vars_attrs(self, **kwargs):
         """Convenience function to set the variable dictionaries on a model, checking if all have been provided. """
         a = set(kwargs.keys())
         b = set(self.__vars__)
@@ -780,18 +804,21 @@ class BaseGurobiModel(ModelWrapper):
             setattr(self, varname, vardict)
 
     def set_variables_continuous(self):
-        for vargroup in self.__intvars__ + self.__binvars__:
-            for var in getattr(self, vargroup).values():
-                var.vtype = GRB.CONTINUOUS
+        for var_attr in self.__intvars__ + self.__binvars__:
+            if var_attr in self.__lonevars__:
+                getattr(self, var_attr).vtype = GRB.CONTINUOUS
+            else:
+                for var in getattr(self, var_attr).values():
+                    var.vtype = GRB.CONTINUOUS
 
     def set_variables_integer(self):
-        for vargroup in self.__intvars__:
-            for var in getattr(self, vargroup).values():
-                var.vtype = GRB.INTEGER
-
-        for vargroup in self.__binvars__:
-            for var in getattr(self, vargroup).values():
-                var.vtype = GRB.BINARY
+        for var_attr in self.__intvars__ + self.__binvars__:
+            vtype = GRB.BINARY if var_attr in self.__binvars__ else GRB.INTEGER
+            if var_attr in self.__lonevars__:
+                getattr(self, var_attr).vtype = vtype
+            else:
+                for var in getattr(self, var_attr).values():
+                    var.vtype = vtype
 
     def get_iis_constraints(self):
         iis_keys = dict()
@@ -803,20 +830,29 @@ class BaseGurobiModel(ModelWrapper):
         return iis_keys
 
     def update_var_values(self, where=None, eps=EPS):
-        for vargroup in self.__vars__:
-            vardict_attr = vargroup
-            valdict_attr = vardict_attr + 'v'
+        for var_attr in self.__vars__:
+            val_attr = var_attr + 'v'
             if where is None:
-                setattr(self, valdict_attr,
-                        {k: var.X for k, var in getattr(self, vardict_attr).items() if var.X > eps})
+                if var_attr in self.__lonevars__:
+                    setattr(self, val_attr, getattr(self, var_attr).X)
+                else:
+                    setattr(self, val_attr,
+                            {k: var.X for k, var in getattr(self, var_attr).items() if var.X > eps})
+
             elif where == GRB.Callback.MIPSOL:
-                vardict = getattr(self, vardict_attr)
-                setattr(self, valdict_attr,
-                        dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(vardict.values())) if v > eps))
+                if var_attr in self.__lonevars__:
+                    setattr(self, val_attr, self.cbGetSolution(getattr(self, var_attr)))
+                else:
+                    vardict = getattr(self, var_attr)
+                    setattr(self, val_attr,
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(vardict.values())) if v > eps))
             elif where == GRB.Callback.MIPNODE:
-                vardict = getattr(self, vardict_attr)
-                setattr(self, valdict_attr,
-                        dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(vardict.values())) if v > eps))
+                if var_attr in self.__lonevars__:
+                    setattr(self, val_attr, self.cbGetNodeRel(getattr(self, var_attr)))
+                else:
+                    vardict = getattr(self, var_attr)
+                    setattr(self, val_attr,
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(vardict.values())) if v > eps))
             else:
                 raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
