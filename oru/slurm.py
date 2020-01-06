@@ -58,12 +58,19 @@ def _validate_and_raise(validator, document, schema=None):
     return validator.document
 
 
-def _remove_derived(d):
-    d = d.copy()
-    for key in list(d.keys()):
-        if d[key].pop("derived", False):
-            del d[key]
-    return d
+def _strip_custom_keywords(d, keep_derived_fields = True):
+    custom_keywords = ('derived', 'help')
+    s = d.copy()
+    for key in list(s.keys()):
+        if not keep_derived_fields and s[key].get('derived', False):
+            del s[key]
+        else:
+            for k in custom_keywords:
+                try:
+                    del s[key][k]
+                except KeyError:
+                    pass
+    return s
 
 _CERBERBUS_TYPE_TO_PYTHON_TYPE = {
  "integer" : int,
@@ -73,14 +80,40 @@ _CERBERBUS_TYPE_TO_PYTHON_TYPE = {
  "number" : float
 }
 
-def _get_domain_help(rules):
+
+def build_help_message(name, rules, arg_class : str):
+    arg_class = arg_class.upper()
+
     if 'min' in rules and 'max' in rules:
-        return  "Must be between {} and {}, inclusive".format(str(rules['min']), str(rules['max']))
+        domain_help =   "Must be between {} and {}, inclusive".format(str(rules['min']), str(rules['max']))
     elif 'min' in rules:
-        return  "Must be at least {}".format(str(rules['min']))
+        domain_help =   "Must be at least {}".format(str(rules['min']))
     elif 'max' in rules:
-        return "Must be at most {}".format(str(rules['max']))
-    return ""
+        domain_help =   "Must be at most {}".format(str(rules['max']))
+    else:
+        domain_help = ""
+
+    if 'default' in rules:
+        if len(domain_help) > 0:
+            domain_help += " (default is %(default)s)"
+        else:
+            domain_help = "Default is %(default)s"
+
+    if rules.get('type') == 'boolean':
+        if rules.get('default', False):
+            arg_class_description = f'{arg_class}: enable {name}'
+        else:
+            arg_class_description = f'{arg_class}: disable {name}'
+    else:
+        arg_class_description = f'{arg_class}: {name}'
+
+    if 'help' in rules:
+        help_msg = [arg_class_description, rules['help'], domain_help]
+    else:
+        help_msg = [arg_class_description, domain_help]
+
+    help_msg = '. '.join(help_msg) + '.'
+    return help_msg
 
 class Experiment:
     INPUTS = {"index" : {"type" : "integer", "min" : 0}}
@@ -95,17 +128,18 @@ class Experiment:
 
         v = cerberus.Validator(require_all=True)
 
-        self.inputs = _validate_and_raise(v, inputs, _remove_derived(self.INPUTS))
-        self.outputs = _validate_and_raise(v, outputs, _remove_derived(self.OUTPUTS))
-        self.parameters = _validate_and_raise(v, parameters, _remove_derived(self.PARAMETERS))
+
+        self.inputs = _validate_and_raise(v, inputs, _strip_custom_keywords(self.INPUTS, False))
+        self.outputs = _validate_and_raise(v, outputs, _strip_custom_keywords(self.OUTPUTS, False))
+        self.parameters = _validate_and_raise(v, parameters, _strip_custom_keywords(self.PARAMETERS, False))
         self._directory = None
         self._parameter_string = None
 
         self.define_derived()
 
-        self.inputs = _validate_and_raise(v, self.inputs, self.INPUTS)
-        self.parameters = _validate_and_raise(v, self.parameters, self.PARAMETERS)
-        self.outputs = _validate_and_raise(v, self.outputs, self.OUTPUTS)
+        self.inputs = _validate_and_raise(v, self.inputs, _strip_custom_keywords(self.INPUTS, True))
+        self.outputs = _validate_and_raise(v, self.outputs,  _strip_custom_keywords(self.OUTPUTS, True))
+        self.parameters = _validate_and_raise(v, self.parameters,  _strip_custom_keywords(self.PARAMETERS, True))
 
     @classmethod
     def from_cl_args(cls, args=None):
@@ -185,13 +219,17 @@ class Experiment:
         for name, rules in cls.INPUTS.items():
             if rules.get('derived', False):
                 continue
-            kwargs = {}
+
+            argname = name.replace("_", "-")
+            kwargs = {'help' : build_help_message(name, rules, 'input')}
             argtype = rules.get('type', None)
-            kwargs['help'] = "Input: {}.  ".format(name) + _get_domain_help(rules) + ".  "
             if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
                 kwargs["type"] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
 
-            cl_arguments[name] = ((name,), kwargs)
+            if 'default' in rules:
+                kwargs['default'] = rules['default']
+                argname = "--" + argname
+            cl_arguments[name] = ((argname,), kwargs)
 
 
         for name, rules in cls.PARAMETERS.items():
@@ -211,18 +249,11 @@ class Experiment:
                 if kwargs['type'] == bool:
                     if kwargs.pop('default', False):
                         argname = "--no-" + name.replace("_", "-")
-                        kwargs["help"] = "Parameter: disable " + name
                         kwargs['action'] = 'store_false'
                     else:
-                        kwargs["help"] = "Parameter: enable " + name
                         kwargs['action'] = 'store_true'
                     del kwargs['type']
-                else:
-                    kwargs['help'] = "Parameter: {}.  ".format(name) + _get_domain_help(rules)
-                    if not kwargs['required']:
-                        kwargs['help'] += " (default is %(default)s)"
-                    kwargs['help'] += ".  "
-
+            kwargs['help'] = build_help_message(name, rules, 'paramter')
             cl_arguments[name] = ((argname, ), kwargs)
 
         return cl_arguments
