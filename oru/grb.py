@@ -711,8 +711,8 @@ class ModelWrapper:
     def relax(self):
         return self.model.relax()
 
-    def remove(self):
-        return self.model.remove()
+    def remove(self, items):
+        return self.model.remove(items)
 
     def reset(self):
         return self.model.reset()
