@@ -823,9 +823,13 @@ class BaseGurobiModel(ModelWrapper):
     def get_iis_constraints(self):
         iis_keys = dict()
         for name, constrdict in self.cons.items():
-            keys = [k for k, cons in constrdict.items() if cons.IISConstr > 0]
-            if len(keys) > 0:
-                iis_keys[name] = keys
+            if isinstance(constrdict, Constr):
+                if constrdict.IISConstr > 0:
+                    iis_keys[name] = None
+            else:
+                keys = [k for k, cons in constrdict.items() if cons.IISConstr > 0]
+                if len(keys) > 0:
+                    iis_keys[name] = keys
 
         return iis_keys
 
