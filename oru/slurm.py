@@ -93,26 +93,24 @@ def build_help_message(name, rules, arg_class : str):
     else:
         domain_help = ""
 
-    if 'default' in rules:
-        if len(domain_help) > 0:
-            domain_help += " (default is %(default)s)"
-        else:
-            domain_help = "Default is %(default)s"
-
     if rules.get('type') == 'boolean':
         if rules.get('default', False):
-            arg_class_description = f'{arg_class}: enable {name}'
+            arg_class_description = f'{arg_class}: Disable {name}'
         else:
-            arg_class_description = f'{arg_class}: disable {name}'
+            arg_class_description = f'{arg_class}: Enable {name}'
     else:
+        if 'default' in rules:
+            if len(domain_help) > 0:
+                domain_help += " (default is %(default)s)"
+            else:
+                domain_help = "Default is %(default)s"
+
         arg_class_description = f'{arg_class}: {name}'
 
-    if 'help' in rules:
-        help_msg = [arg_class_description, rules['help'], domain_help]
-    else:
-        help_msg = [arg_class_description, domain_help]
 
-    help_msg = '. '.join(help_msg) + '.'
+    help_msg = [arg_class_description, rules.get('help', ''), domain_help]
+    help_msg = '. '.join(filter(lambda s : len(s) > 0, help_msg)) + '.'
+
     return help_msg
 
 class Experiment:
@@ -248,12 +246,12 @@ class Experiment:
                 kwargs['type'] =  _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
                 if kwargs['type'] == bool:
                     if kwargs.pop('default', False):
-                        argname = "--no-" + name.replace("_", "-")
+                        argname = "--no-" + argname.lstrip('-')
                         kwargs['action'] = 'store_false'
                     else:
                         kwargs['action'] = 'store_true'
                     del kwargs['type']
-            kwargs['help'] = build_help_message(name, rules, 'paramter')
+            kwargs['help'] = build_help_message(name, rules, 'parameter')
             cl_arguments[name] = ((argname, ), kwargs)
 
         return cl_arguments

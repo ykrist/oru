@@ -690,7 +690,6 @@ class ModelWrapper:
         if callback is None:
             return self.model.optimize()
         else:
-
             return self.model.optimize(_wrap_callback(callback))
 
     def presolve(self):
