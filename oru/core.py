@@ -3,7 +3,7 @@ from typing import Dict, Iterable, Callable, Any, Union, Mapping
 import time
 import dataclasses
 import json
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import os
 import functools
 
@@ -70,7 +70,7 @@ class Stopwatch:
         self._total_time = 0
         self._lap_time = 0
         self._active = False
-        self._times = dict()
+        self._times = OrderedDict()
 
     @property
     def active(self):
