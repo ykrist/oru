@@ -23,7 +23,7 @@ def main(args):
                 print(f"failed: ", str(e))
                 sys.exit(1)
 
-        python_command = ["python", "-OO", args.target] + args.target_args + [str(i)]
+        python_command = ["python", "-O", args.target] + args.target_args + [str(i)]
         bash_script_contents = other_info['script'].format(
             python_command=" ".join(python_command)
         )
