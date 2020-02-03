@@ -1099,15 +1099,16 @@ class BaseGurobiModel(ModelWrapper):
                     setattr(self, val_attr, self.cbGetSolution(getattr(self, var_attr)))
                 else:
                     vardict = getattr(self, var_attr)
+
                     setattr(self, val_attr,
-                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(vardict.values())) if v > eps))
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(list(vardict.values()))) if v > eps))
             elif where == GRB.Callback.MIPNODE:
                 if var_attr in self.__lonevars__:
                     setattr(self, val_attr, self.cbGetNodeRel(getattr(self, var_attr)))
                 else:
                     vardict = getattr(self, var_attr)
                     setattr(self, val_attr,
-                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(vardict.values())) if v > eps))
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(list(vardict.values()))) if v > eps))
             else:
                 raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
