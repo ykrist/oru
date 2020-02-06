@@ -7,6 +7,7 @@ import itertools
 import fnmatch
 import json
 import signal
+import re
 
 from oru import map_keys
 from typing import Dict, Tuple, Any
@@ -17,10 +18,43 @@ Key = str
 TupleKey = Tuple[Key,...]
 FlatDict = Dict[TupleKey, Any]
 
-
 # Make python simply stop when piping into head/tail (SIG_DFL is the "default" signal - i.e. don't let python
 # handle SIGPIPE and throw and exception).
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+
+class ParseError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+        super().__init__()
+
+
+def parse_json_blobs(s : str):
+    depth = 0
+    ends = []
+    starts = []
+    for idx, c in enumerate(s):
+        if c == "{":
+            if depth == 0:
+                starts.append(idx)
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                ends.append(idx)
+        elif re.match(r'\S', c) and depth == 0:
+            raise ParseError("nonwhitespace character between blobs: " + c)
+
+        if depth < 0:
+            raise ParseError("bad format: unmatched `}`")
+
+    if depth > 0:
+        raise ParseError("bad format: unmatched `{`")
+
+    blobs = []
+    for i,j in zip(starts, ends):
+        blobs.append(json.loads(s[i:j+1]))
+
+    return blobs
 
 
 def convert_filename(fn, args):
@@ -83,10 +117,6 @@ def expand_tuplekeys(d : FlatDict, sep : str) ->  FlatDict:
 def join_tuplekeys(d : FlatDict, sep : str) -> Dict[str, Any]:
     return map_keys(lambda tuplekey : sep.join(tuplekey),d)
 
-
-
-
-
 def main(args):
     if args.input.count('-') > 1:
         error('STDIN given multiple times.')
@@ -95,10 +125,18 @@ def main(args):
     input_files = []
     for i,f in enumerate(args.input):
         if f == '-':
-            stdin_filelist_idx = i
-            d = json.loads(sys.stdin.read())
-            if not isinstance(d, list):
-                d = [d]
+            stdin = sys.stdin.read()
+            try:
+                d = json.loads(stdin)
+            except json.JSONDecodeError:
+                try:
+                    d = parse_json_blobs(stdin)
+                except ParseError as e:
+                    error("unable to parse JSON blobs from STDIN: "+ e.msg)
+                except json.JSONDecodeError:
+                    error("unable to parse JSON blobs from STDIN: bad JSON format.")
+
+
             if len(d) > 1:
                 input_files.extend([f"STDIN{i:d}" for i in range(len(d))])
             elif len(d) == 1:
@@ -113,8 +151,9 @@ def main(args):
     if args.insert is not None:
         if len(data) <= 1:
             error("At least 2 inputs are required.")
-        elif len(data)  - 1 < len(args.insert):
-            error("Too many field names: {} field names but only {} inputs.".format(len(args.insert), len(data)))
+        elif len(data)  != len(args.insert) + 1:
+            error("Missing/extra field names: Number of field names ({}) should be one less than"
+                  " the number of inputs ({}).".format(len(args.insert), len(data)))
         args.insert.extend(map(lambda fn : convert_filename(fn, args), input_files[len(args.insert)+1:]))
 
     if args.merge:
@@ -123,13 +162,20 @@ def main(args):
         for i in reversed(range(1, len(data))):
             data[0][args.insert[i-1]] = data.pop(-1)
 
-
-
-    if args.merge or args.insert is not None:
+    if args.merge or args.insert:
         input_files = ['MERGED']
 
+    if args.print_field:
+        if len(data) > 1:
+            error("Can only print from a single input (or multiple inputs that have been merged).")
 
-    if args.csv or args.flatten or args.patterns is not None or args.unflatten:
+    if args.single_line:
+        json_kwargs = {}
+    else:
+        json_kwargs = {'indent' : '\t'}
+
+
+    if args.csv or args.flatten or args.patterns or args.unflatten:
         for i in range(len(data)):
             data[i] = flatten_dictionary(data[i])
 
@@ -137,20 +183,21 @@ def main(args):
         for i in range(len(data)):
             data[i] = expand_tuplekeys(data[i], args.level_sep)
 
-    if args.patterns is not None:
+    if args.patterns:
+        patterns = tuple(map(lambda x: x.split(args.level_sep), args.patterns))
         for i in range(len(data)):
-            patterns = tuple(map(lambda x: x.split(args.level_sep), args.patterns))
             for key in list(data[i].keys()):
                 for pattern in patterns:
-                    if len(key) >= len(pattern) and all(fnmatch.fnmatch(k, p) for k, p in zip(key, pattern)):
+                    if all(fnmatch.fnmatch(k, p) for k, p in zip(key, pattern)):
                         break
                 else:
                     del data[i][key]
 
+
     if args.csv or args.flatten:
         for i in range(len(data)):
             data[i] = join_tuplekeys(data[i], args.level_sep)
-    elif args.patterns is not None or args.unflatten:
+    elif args.patterns or args.unflatten:
         for i in range(len(data)):
             data[i] = unflatten_dictionary(data[i])
 
@@ -168,8 +215,7 @@ def main(args):
         index_suffix = 0
         while index_field_name in csv_fields:
             index_suffix += 1
-        if index_suffix > 0:
-            index_field_name += str(index_suffix)
+            index_field_name = f'index{index_suffix:d}'
 
         csv_fields = [index_field_name] + sorted(csv_fields)
         csv_writer = csv.DictWriter(fp, csv_fields, extrasaction='ignore')
@@ -180,10 +226,25 @@ def main(args):
             csv_writer.writerow(r)
             fp.flush()
 
+    elif args.print_field is not None:
+        tuplekey = args.print_field.split(args.level_sep)
+        d = data[0]
+        for i,k in enumerate(tuplekey):
+            try:
+                d = d[k]
+            except KeyError:
+                error('Field not found: ' + ' -> '.join(['<root>'] + tuplekey[:i+1]))
+
+        if isinstance(d, dict):
+            d = json.dumps(d, **json_kwargs) + '\n'
+        else:
+            d = str(d) + '\n'
+        fp.write(d)
+
     else:
         if len(data) == 1:
             data = data[0]
-        json.dump(data ,fp, indent='\t')
+        json.dump(data ,fp, **json_kwargs)
         fp.write('\n')
 
     if closefile:
@@ -192,10 +253,13 @@ def main(args):
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(add_help=False)
-    p.add_argument("input", type=str, nargs='+',
-                   help='Input JSON files, set to - for STDIN. If the top-level JSON object to STDIN is an array,'
-                        ' each element in this array will be treated as a separate JSON input.  '
-                        'Useful for chaining %(prog)s commands together in a pipeline.')
+    p.add_argument("input", type=str, nargs='*', default=['-'],
+                   help='Input JSON files, use - for STDIN. If the top-level JSON object to STDIN is an array,'
+                        ' each element in this array will be treated as a separate JSON input.  Useful for chaining '
+                        '%(prog)s commands together in a pipeline. '
+                        'Alternatively, when using a STDIN, a sequence of JSON objects may be supplied without '
+                        'delimiters, eg such as `cat *.json | json-util`. Each JSON object will be treated as a separate '
+                        'input.  Default is STDIN.')
 
     generaloptions = p.add_argument_group("general options")
     generaloptions.add_argument("-h","--help", action='help')
@@ -207,9 +271,11 @@ if __name__ == '__main__':
     generaloptions.add_argument("-kd", action="store_true",
                    help="Keep directories when converting input filenames")
     generaloptions.add_argument("-f", "--filter", type=str, dest='patterns', action='append',
-                   help="Select fields from JSON file(s).  Use a SEP (see --level-sep) to access nested fields.  "
+                   help="Select fields from JSON file(s).  Use SEP (see --level-sep) to access nested fields.  "
                          "Standard wildcard matching is supported.  Use this option multiple times to specify"
                          " several patterns at once")
+    generaloptions.add_argument("-s", "--single-line", action='store_true',
+                                help='Print JSON output on a single line.')
 
     preprocessing = p.add_argument_group("preprocessing options")
     preprocessing = preprocessing.add_mutually_exclusive_group()
@@ -233,17 +299,8 @@ if __name__ == '__main__':
     outputcontrol.add_argument("--csv", action='store_true',
                    help="Convert into a CSV file, where each JSON output is one row in the output.  "
                         "Nested JSON keys will be converted to column names in the same manner as `--flatten`.")
+    outputcontrol.add_argument("-p", "--print-field", type=str,
+                                help='Print a single field.  Use SEP (see --level-sep) to access nested fields.')
 
-
-    # p.add_argument("-p", "--print", action='store_true',
-    #                help="Pretty print the output rather than output a JSON string (the default).")
-
-    if len(sys.argv) > 1:
-        args = p.parse_args(sys.argv[1:])
-        main(args)
-    else:
-        p.print_usage()
-        sys.exit(1)
-
-
-
+    args = p.parse_args(sys.argv[1:])
+    main(args)
