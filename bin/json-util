@@ -13,6 +13,8 @@ from oru import map_keys
 from typing import Dict, Tuple, Any
 from functools import reduce
 
+# sys.stdin = open('scrap.json', 'r')
+
 NestedDict = Dict[str,Dict]
 Key = str
 TupleKey = Tuple[Key,...]
@@ -128,6 +130,8 @@ def main(args):
             stdin = sys.stdin.read()
             try:
                 d = json.loads(stdin)
+                if isinstance(d, dict):
+                    d = [d]
             except json.JSONDecodeError:
                 try:
                     d = parse_json_blobs(stdin)
@@ -135,7 +139,6 @@ def main(args):
                     error("unable to parse JSON blobs from STDIN: "+ e.msg)
                 except json.JSONDecodeError:
                     error("unable to parse JSON blobs from STDIN: bad JSON format.")
-
 
             if len(d) > 1:
                 input_files.extend([f"STDIN{i:d}" for i in range(len(d))])
