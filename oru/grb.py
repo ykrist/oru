@@ -35,7 +35,7 @@ class IntVar(Var):
 
 
 @dataclasses.dataclass
-class ModelInformation(JSONSerialisableDataclass):
+class GurobiModelInformation(JSONSerialisableDataclass):
     barr_iters: int
     is_multiobj: bool
     max_coeff: float
@@ -1041,6 +1041,10 @@ class BaseGurobiModel(ModelWrapper):
         self.cut_cache_size = 0
         self.cons: Dict[str, Dict[Any, Constr]] = dict()
 
+    @property
+    def cons_size(self):
+        return {key : 1 if isinstance(val, Constr) else len(val) for key,val in self.cons.items()}
+
     def set_vars_attrs(self, **kwargs):
         """Convenience function to set the variable dictionaries on a model, checking if all have been provided. """
         a = set(kwargs.keys())
@@ -1127,16 +1131,16 @@ class BaseGurobiModel(ModelWrapper):
         self.cut_cache_size = 0
         return total
 
-    def get_model_information(self) -> ModelInformation:
+    def get_gurobi_model_information(self) -> GurobiModelInformation:
         kwargs = {}
-        for attr in dataclasses.fields(ModelInformation):
+        for attr in dataclasses.fields(GurobiModelInformation):
+
             try:
                 val = attr.type(self.model.getAttr(INFO_ATTR_TO_MODEL_ATTR[attr.name]))
             except AttributeError:
                 val = None
             kwargs[attr.name] = val
-
-        return ModelInformation(**kwargs)
+        return GurobiModelInformation(**kwargs)
 
     def _add_cut_to_cache(self, cut, cache, cache_key=None):
         if cache_key is not None:
