@@ -34,8 +34,8 @@ def parse_slurm_info(jsonstr):
     unknown_fields = info_fields - set(SLURM_INFO_REQUIRED_FIELDS + SLURM_INFO_OPTIONAL_FIELDS)
     if len(unknown_fields) > 0:
         raise KeyError(f"Unknown JSON fields:\n\t" + "\n\t".join(unknown_fields))
-    non_slurm_info = {key : info.pop(key) for key in ["script"]}
-    return info, non_slurm_info
+    # non_slurm_info = {key : info.pop(key) for key in ["script"]}
+    return info
 
 
 def array_range(str):

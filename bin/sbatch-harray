@@ -5,36 +5,173 @@ import subprocess
 import sys
 import tempfile
 import os
+import asyncio
+from oru import frozendict
+from collections import defaultdict
 
 SBATCH_COMMAND = ['sbatch']
 
+SLURM_FIELDS_AGGREGATABLE = {
+    'mem',
+    'cpus-per-task',
+    'tasks-per-node',
+    'nodes',
+    'mail-user',
+    'mail-type',
+    'constraint',
+    'time'
+}
+
+SLURM_FIELDS_AGGREGATABLE = {
+    'mem',
+    'cpus-per-task',
+    'tasks-per-node',
+    'nodes',
+    'mail-user',
+    'mail-type',
+    'constraint',
+    'time',
+    'script'
+}
+
+SLURM_FIELDS_NOT_AGGREGATABLE = {
+    'job-name',
+    'out',
+    'err'
+}
+
+class SBHError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+        super().__init__(msg)
+
+
+def format_indices(indices : list):
+    indices = sorted(indices)
+    expr = []
+    start_range = indices[0]
+    end_range = indices[0]
+    def _fmt_range(s, e):
+        if s < e:
+            return f'{s}-{e}'
+        else:
+            return str(s)
+
+
+    for i in indices[1:]:
+        if i == end_range + 1:
+            end_range = i
+
+        else :#or i == sorted_list[-1]:
+            expr.append(_fmt_range(start_range,end_range))
+            start_range = i
+            end_range = i
+
+    expr.append(_fmt_range(start_range,end_range))
+    return ','.join(expr)
+
+async def retrieve_slurm_info(cl_args):
+    sem = asyncio.Semaphore(256) # limit to 256 child procs
+    async def get_info(i):
+        command = ["python", cl_args.target, '--slurminfo'] + cl_args.target_args + [str(i)]
+        async with sem:
+            # print('launch proc')
+            proc = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE)
+            slurm_json, _ = await proc.communicate()
+            if proc.returncode != 0:
+                raise SBHError(f"failed to get slurm infomation: TARGET return exit code: {proc.returncode:d}")
+            else:
+                try:
+                    slurm_json = oru.slurm.parse_slurm_info(slurm_json.decode())
+                except Exception as e:
+                    raise SBHError(f"failed to parse slurm information: " + str(e))
+
+        return slurm_json
+
+    return await asyncio.gather(*[get_info(i) for i in cl_args.array_range])
+
 
 def main(args):
+    format_indices([0, 1, 2, 4, 5, 7, 9, 10, 11])
+    slurm_parameter_sets = defaultdict(list)
+    try:
+        slurm_info = dict(zip(args.array_range, asyncio.run(retrieve_slurm_info(args))))
+    except SBHError as e:
+        print(e.msg)
+        sys.exit(1)
     for i in args.array_range:
-        slurm_info_proc = subprocess.run(["python", args.target, '--slurminfo'] + args.target_args + [str(i)],
-                                         text=True, stdout=subprocess.PIPE)
-        if slurm_info_proc.returncode != 0:
-            print(f"failed: TARGET return exit code: {slurm_info_proc.returncode:d}")
-            sys.exit(1)
+        # slurm_info_proc = subprocess.run(["python", args.target, '--slurminfo'] + args.target_args + [str(i)],
+        #                                  text=True, stdout=subprocess.PIPE)
+        # if slurm_info_proc.returncode != 0:
+        #     print(f"failed: TARGET return exit code: {slurm_info_proc.returncode:d}")
+        #     sys.exit(1)
+        # else:
+        #     try:
+        #         slurm_info = oru.slurm.parse_slurm_info(slurm_info_proc.stdout)
+        #     except Exception as e:
+        #         print(f"failed: ", str(e))
+        #         sys.exit(1)
+        #
+        # if not set(slurm_info.keys()) <= SLURM_FIELDS_AGGREGATABLE | SLURM_FIELDS_NOT_AGGREGATABLE:
+        #     raise Exception
+
+        par_set = frozendict((k, slurm_info[i].pop(k)) for k in SLURM_FIELDS_AGGREGATABLE if k in slurm_info[i])
+        slurm_parameter_sets[par_set].append((i, slurm_info[i]))
+
+    slurm_scripts = []
+
+    for par_set in slurm_parameter_sets:
+        array_steps = slurm_parameter_sets[par_set]
+        stdout = ['out' in d for _,d in array_steps]
+        if all(stdout):
+            stdout = True
+        elif not any(stdout):
+            stdout = False
         else:
-            try:
-                slurm_info, other_info = oru.slurm.parse_slurm_info(slurm_info_proc.stdout)
-            except Exception as e:
-                print(f"failed: ", str(e))
-                sys.exit(1)
+            raise Exception
+        stderr = ['err' in d for d in slurm_parameter_sets[par_set]]
+        if all(stderr):
+            stderr = True
+        elif not any(stderr):
+            stderr = False
+        else:
+            raise Exception
 
-        python_command = ["python", "-O", args.target] + args.target_args + [str(i)]
-        bash_script_contents = other_info['script'].format(
-            python_command=" ".join(python_command)
-        )
+        array_steps_commands = []
+        array_steps_names = []
+        for i,d in sorted(array_steps):
+            python_command = ["python", "-O", args.target] + args.target_args + [str(i)]
+            if stderr:
+                python_command.append('2>' + d['err'])
+            else:
+                python_command.append('2>&1')
+            if stdout:
+                python_command.append('>'+d['out'])
+            else:
+                python_command.append('>/dev/null')
 
+            array_steps_commands.append((i," ".join(python_command)))
+            array_steps_names.append((i,d.get('job-name', 'null')))
+
+        par_set = dict(par_set)
+        script = par_set.pop('script')
+        script += '\ncase $SLURM_ARRAY_TASK_ID in\n'
+
+        for i,command in array_steps_commands:
+            script += f'{i})\n\t{command}\n;;\n'
+        script += 'esac\n'
+
+        slurm_scripts.append((par_set, script, array_steps_names))
+
+    for sbatch_pars, bash_script_contents, array_steps_names in slurm_scripts:
         bash_script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
         bash_script_file.file.write(bash_script_contents)
         bash_script_file.file.close()
 
         slurm_args = []
-        for key, val in slurm_info.items():
+        for key, val in sbatch_pars.items():
             slurm_args.extend(("--" + key, val))
+        slurm_args.extend(("--array", format_indices([i for i,_ in array_steps_names])))
 
         command = SBATCH_COMMAND + slurm_args + [bash_script_file.name]
 
