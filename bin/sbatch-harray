@@ -236,7 +236,7 @@ if __name__ == '__main__':
 
     name = subparsers.add_parser('name', help='Get the name of a `job-name` by its job id')
     name.set_defaults(func=command_name)
-    name.add_argument('jobid', type=str, nargs='?', metavar='JOBID', default=[],
+    name.add_argument('jobid', type=str, nargs='*', metavar='JOBID', default=[],
                       help='Slurm job IDs to filter by.  If none are provided, all entries are printed.')
     name.add_argument('-r', '--regexp', action='store_true', help='Treat JOBID as Perl-compatible regular expressions.')
 
