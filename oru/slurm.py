@@ -14,7 +14,6 @@ SLURM_INFO_OPTIONAL_FIELDS = (
     "mail-user",
     "mail-type",
     "nodes",
-    "tasks-per-node",
     "mem",
     "cpus-per-task",
     "out",
@@ -261,10 +260,6 @@ class Experiment:
         return "1"
 
     @property
-    def resource_tasks_per_node(self) -> str:
-        return "1"
-
-    @property
     def resource_mail_user(self) -> str:
         return None
 
@@ -316,12 +311,12 @@ class Experiment:
             "mem" : self.resource_memory,
             "cpus-per-task" : self.resource_cpus,
             "nodes" : self.resource_nodes,
-            "tasks-per-node" : self.resource_tasks_per_node,
             "mail-user" : self.resource_mail_user,
             "mail-type" : self.resource_mail_type,
             "constraint" : self.resource_constraints,
             "script" : self.resource_slurm_script,
         }
+        assert set(cl_opts.keys()) == set(SLURM_INFO_OPTIONAL_FIELDS + SLURM_INFO_REQUIRED_FIELDS)
         cl_opts = dict(filter(lambda kv : kv[1] is not None, cl_opts.items()))
         if "mail-user" not in cl_opts and "mail-type" in cl_opts:
             del cl_opts['mail-type']
