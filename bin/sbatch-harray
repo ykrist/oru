@@ -111,6 +111,7 @@ class SlurmArrayJob:
         for key, val in self.sbatch_opts.items():
             sbatch_args.extend(("--" + key, val))
         sbatch_args.extend(("--array", format_indices(self.indices)))
+        sbatch_args.extend(("--out", "/dev/null"))
         return sbatch_args
 
 def command_submit(args):
@@ -146,27 +147,23 @@ def command_submit(args):
 
             command = SBATCH_COMMAND + array_job.get_sbatch_args() + [bash_script_file.name]
 
+            if args.dryrun:
+                command.append('--test-only')
+
             if args.verbose:
                 print(" ".join(command))
                 print(bash_script_file.name.center(80, '-'))
                 print(bash_script_contents)
                 print("-" * 80)
 
-            if args.dryrun:
-                command.append('--test-only')
 
-            result = subprocess.run(command, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+            result = subprocess.run(command, stdout=subprocess.PIPE, text=True)
 
             if result.returncode != 0:
                 os.remove(bash_script_file.name)
                 panic(f"command `{' '.join(command)}` exit with nonzero status {result.returncode:d}:")
 
-            if args.dryrun:
-                print(result.stderr)
-                # m = re.match(r'^sbatch:\s+Job\s+(?P<jobid>\d+)\s+to', result.stderr)
-                # assert m is not None
-                # job_id = int(m.group('jobid'))
-            else:
+            if not args.dryrun:
                 job_id = result.stdout.strip()
                 for i,n in array_job.index_to_name.items():
                     db[f'{job_id}_{i}'] = n
