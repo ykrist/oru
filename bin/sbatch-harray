@@ -145,10 +145,12 @@ def command_submit(args):
             bash_script_file.file.write(bash_script_contents)
             bash_script_file.file.close()
 
-            command = SBATCH_COMMAND + array_job.get_sbatch_args() + [bash_script_file.name]
-
+            command = SBATCH_COMMAND + array_job.get_sbatch_args()
             if args.dryrun:
                 command.append('--test-only')
+            command.append(bash_script_file.name)
+
+
 
             if args.verbose:
                 print(" ".join(command))
