@@ -10,9 +10,12 @@ from oru import frozendict
 import re
 import shutil
 import shelve
+import glob
 from typing import Dict, List, Tuple
 
-DATABASE_FILE = os.path.dirname(os.path.abspath(__file__)) + '/.' + os.path.basename(__file__) + '.db'
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),'.sbatch-harray.data.d')
+DATABASE_FILE = os.path.join(DATA_DIR, 'db')
+SLURM_LOG_DIR = os.path.join(DATA_DIR, 'logs')
 
 SBATCH_COMMAND = ['sbatch', '--parsable']
 
@@ -33,6 +36,12 @@ SLURM_INFO_NOT_AGGREGATABLE = {
     'out',
     'err'
 }
+
+
+def ensure_directories_exist():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    os.makedirs(SLURM_LOG_DIR, exist_ok=True)
+
 
 def panic(msg):
     print(msg, file=sys.stderr)
@@ -92,12 +101,14 @@ class SlurmArrayJob:
         self.sbatch_opts = sbatch_opts
         self.script_preamble = script_preamble
         self.index_to_name = {}
+        self.index_to_logs = {}
         self.index_cmd = {}
 
-    def add_job(self, index : int, name : str, cmd : List[str]):
+    def add_job(self, index : int, name : str, out : str, err : str, cmd : List[str]):
         self.indices.append(index)
         self.index_cmd[index] = cmd
         self.index_to_name[index] = name
+        self.index_to_logs[index] = (os.path.abspath(out), os.path.abspath(err))
 
     def get_job_script(self):
         script = self.script_preamble + '\ncase $SLURM_ARRAY_TASK_ID in\n'
@@ -111,7 +122,8 @@ class SlurmArrayJob:
         for key, val in self.sbatch_opts.items():
             sbatch_args.extend(("--" + key, val))
         sbatch_args.extend(("--array", format_indices(self.indices)))
-        sbatch_args.extend(("--out", "/dev/null"))
+        sbatch_args.extend(("--out", os.path.join(SLURM_LOG_DIR, '%A_%a.out')))
+        sbatch_args.extend(("--err", os.path.join(SLURM_LOG_DIR, '%A_%a.err')))
         return sbatch_args
 
 def command_submit(args):
@@ -133,10 +145,10 @@ def command_submit(args):
             script_preamble = sbatch_opts.pop('script')
             array_jobs[array_job_id] = SlurmArrayJob(sbatch_opts, script_preamble)
 
-        cmd = ["python", "-O", args.target] + args.target_args + \
-              [str(i), '2>' + slurm_info.get('err', '&1'), '1>'+ slurm_info.get('out', '/dev/null')]
+        cmd = ["python", "-O", args.target] + args.target_args + [str(i)]
 
-        array_jobs[array_job_id].add_job(i, slurm_info.get('job-name', 'null'), cmd)
+        array_jobs[array_job_id].add_job(i, slurm_info.get('job-name', 'null'),
+                                         slurm_info['out'], slurm_info['err'], cmd)
 
     with shelve.open(DATABASE_FILE) as db:
         for array_job in array_jobs.values():
@@ -150,14 +162,11 @@ def command_submit(args):
                 command.append('--test-only')
             command.append(bash_script_file.name)
 
-
-
             if args.verbose:
                 print(" ".join(command))
                 print(bash_script_file.name.center(80, '-'))
                 print(bash_script_contents)
                 print("-" * 80)
-
 
             result = subprocess.run(command, stdout=subprocess.PIPE, text=True)
 
@@ -168,7 +177,8 @@ def command_submit(args):
             if not args.dryrun:
                 job_id = result.stdout.strip()
                 for i,n in array_job.index_to_name.items():
-                    db[f'{job_id}_{i}'] = n
+                    out,err = array_job.index_to_logs[i]
+                    db[f'{job_id}_{i}'] = {'name' : n, 'err' : err, 'out' : out}
                 db.sync()
                 print(f'Submitted job ID {job_id}')
 
@@ -194,17 +204,42 @@ def command_name(args):
 
         for i in matches:
             try:
-                print(i, db[i])
+                print(i, db[i]['name'])
             except KeyError:
                 panic(f'job id not found: {i}')
 
 def command_clear(args):
+    if len(glob.glob(os.path.join(SLURM_LOG_DIR, '*.out'))) > 0:
+        panic('pending logs still exist, run `sbatch-harray log` first.')
     if os.path.exists(DATABASE_FILE):
         os.remove(DATABASE_FILE)
         print('database cleared.')
 
+def command_log(args):
+    with shelve.open(DATABASE_FILE) as db:
+        for out in glob.glob(os.path.join(SLURM_LOG_DIR, '*.out')):
+            slurm_id = os.path.basename(out).rstrip('.out')
+            err = out.rstrip('.out') + '.err'
+            if not os.path.exists(err):
+                panic(f'{slurm_id} has a STDOUT file but not STDERR')
+
+            db_row = db[slurm_id]
+            out_dest = db_row['out']
+            err_dest = db_row['err']
+            for src,dest in [(out,out_dest), (err, err_dest)]:
+                try:
+                    shutil.copyfile(src,dest)
+                except FileNotFoundError:
+                    panic(f'Missing directory: ' + os.path.dirname(dest))
+
+            os.remove(out)
+            os.remove(err)
+
+
 if __name__ == '__main__':
-    subcommands = ('submit', 'name', 'clear')
+    ensure_directories_exist()
+
+    subcommands = ('submit', 'name', 'clear', 'log')
     argv = sys.argv.copy()[1:]
     if len(argv) > 0:
         if argv[0] not in subcommands and argv[0] not in ('-h', '--help'):
@@ -243,6 +278,12 @@ if __name__ == '__main__':
     clear = subparsers.add_parser('clear', help='Clear all database entries.')
     clear.set_defaults(func=command_clear)
 
+    log = subparsers.add_parser('log', help='Push pending log files to their destinations.')
+    log.set_defaults(func=command_log)
 
-    args = p.parse_args(argv)
-    args.func(args)
+    if len(argv) == 0:
+        p.print_usage()
+        sys.exit(1)
+    else:
+        args = p.parse_args(argv)
+        args.func(args)

@@ -16,12 +16,12 @@ SLURM_INFO_OPTIONAL_FIELDS = (
     "nodes",
     "mem",
     "cpus-per-task",
-    "out",
-    "err",
     "constraint",
 )
 SLURM_INFO_REQUIRED_FIELDS = (
     "script",
+    "out",
+    "err",
 )
 
 def parse_slurm_info(jsonstr):

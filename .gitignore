@@ -3,4 +3,4 @@
 *.log
 tests/*.json
 tests/*.csv
-**.db.*
+bin/.sbatch-harray.data.d
