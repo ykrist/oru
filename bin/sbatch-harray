@@ -211,9 +211,10 @@ def command_name(args):
 def command_clear(args):
     if len(glob.glob(os.path.join(SLURM_LOG_DIR, '*.out'))) > 0:
         panic('pending logs still exist, run `sbatch-harray log` first.')
-    if os.path.exists(DATABASE_FILE):
-        os.remove(DATABASE_FILE)
-        print('database cleared.')
+
+    for f in glob.glob(DATABASE_FILE + '.*'):
+        os.remove(f)
+    print('database cleared.')
 
 def command_log(args):
     with shelve.open(DATABASE_FILE) as db:
