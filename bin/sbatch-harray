@@ -18,6 +18,7 @@ DATABASE_FILE = os.path.join(DATA_DIR, 'db')
 SLURM_LOG_DIR = os.path.join(DATA_DIR, 'logs')
 
 SBATCH_COMMAND = ['sbatch', '--parsable']
+SBATCH_FAKE = False
 
 SLURM_INFO_AGGREGATABLE = {
     'mem',
@@ -95,6 +96,13 @@ async def retrieve_slurm_info(cl_args):
 
     return await asyncio.gather(*[get_info(i) for i in cl_args.array_range])
 
+def retrieve_queue_job_ids():
+    if SBATCH_FAKE:
+        return []
+    proc = subprocess.run(['squeue', '-o', "%50i'", '-r'], check=True, stdout=subprocess.PIPE)
+    stdout = proc.stdout.decode()
+    return list(map(lambda x : x.strip(), stdout.split('\n')[1:]))
+
 class SlurmArrayJob:
     def __init__(self, sbatch_opts : Dict[str,str], script_preamble : str):
         self.indices =  []
@@ -127,10 +135,7 @@ class SlurmArrayJob:
         return sbatch_args
 
 def command_submit(args):
-    if shutil.which('sbatch') is None:
-        print('warning: `sbatch` could not be found, using `sbatch-fake` instead.', file=sys.stderr)
-        SBATCH_COMMAND[0] = 'sbatch-fake'
-
+    check_sbatch()
     array_jobs : Dict[frozendict, SlurmArrayJob] = {}
     try:
         index_slurm_info = dict(zip(args.array_range, asyncio.run(retrieve_slurm_info(args))))
@@ -185,7 +190,7 @@ def command_submit(args):
             os.remove(bash_script_file.name)
 
 
-def command_name(args):
+def command_list(args):
     with shelve.open(DATABASE_FILE) as db:
         keys = db.keys()
 
@@ -216,10 +221,15 @@ def command_clear(args):
         os.remove(f)
     print('database cleared.')
 
-def command_log(args):
+def command_push(args):
+    check_sbatch()
+    running_jobs = set(retrieve_queue_job_ids())
     with shelve.open(DATABASE_FILE) as db:
         for out in glob.glob(os.path.join(SLURM_LOG_DIR, '*.out')):
             slurm_id = os.path.basename(out).rstrip('.out')
+            if slurm_id in running_jobs:
+                continue
+
             err = out.rstrip('.out') + '.err'
             if not os.path.exists(err):
                 panic(f'{slurm_id} has a STDOUT file but not STDERR')
@@ -236,11 +246,17 @@ def command_log(args):
             os.remove(out)
             os.remove(err)
 
+def check_sbatch():
+    global SBATCH_COMMAND, SBATCH_FAKE
+    if shutil.which('sbatch') is None:
+        print('warning: `sbatch` could not be found, using `sbatch-fake` instead.', file=sys.stderr)
+        SBATCH_COMMAND[0] = 'sbatch-fake'
+        SBATCH_FAKE = True
 
 if __name__ == '__main__':
     ensure_directories_exist()
 
-    subcommands = ('submit', 'name', 'clear', 'log')
+    subcommands = ('submit', 'list', 'clear', 'push')
     argv = sys.argv.copy()[1:]
     if len(argv) > 0:
         if argv[0] not in subcommands and argv[0] not in ('-h', '--help'):
@@ -270,17 +286,18 @@ if __name__ == '__main__':
                    type=oru.slurm.array_range)
 
 
-    name = subparsers.add_parser('name', help='Get the name of a `job-name` by its job id')
-    name.set_defaults(func=command_name)
-    name.add_argument('jobid', type=str, nargs='*', metavar='JOBID', default=[],
-                      help='Slurm job IDs to filter by.  If none are provided, all entries are printed.')
-    name.add_argument('-r', '--regexp', action='store_true', help='Treat JOBID as Perl-compatible regular expressions.')
+    list_ = subparsers.add_parser('list', help='Print slurm job ids and job names of jobs managed by sbatch-harray.')
+    list_.set_defaults(func=command_list)
+    list_.add_argument('jobid', type=str, nargs='*', metavar='EXPR', default=[],
+                       help='Slurm job IDs to filter by.  If none are provided, all entries are printed.')
+    list_.add_argument('-r', '--regexp', action='store_true', help='Treat JOBIDs as Perl-compatible regular expressions.')
 
     clear = subparsers.add_parser('clear', help='Clear all database entries.')
     clear.set_defaults(func=command_clear)
 
-    log = subparsers.add_parser('log', help='Push pending log files to their destinations.')
-    log.set_defaults(func=command_log)
+    push = subparsers.add_parser('push', help='Push pending log files to their destinations.  Only affects jobs not '
+                                              'in the Slurm queue.')
+    push.set_defaults(func=command_push)
 
     if len(argv) == 0:
         p.print_usage()
