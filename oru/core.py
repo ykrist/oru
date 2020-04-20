@@ -188,7 +188,7 @@ def tuple_select_items(selection, d : Dict):
         else:
             yield key, val
 
-def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
+def map_keys(func : Callable[[Any], Any], d : Mapping, drop_none = True) -> Dict:
     """
     Return a new dictionary from `d` by applying `func` to all keys.  If `drop_none` is True, then any keys that map to
     None are ignored.
@@ -197,6 +197,13 @@ def map_keys(func : Callable[[Any], Any], d : Dict, drop_none = True) -> Dict:
         return dict(filter(lambda kv : kv[0] is not None, zip(map(func, d.keys()), d.values())))
     else:
         return dict(zip(map(func, d.keys()), d.values()))
+
+
+def map_values(func : Callable[[Any], Any], mapping : Mapping):
+    """
+    Return `mapping` where its func is applied to its values.
+    """
+    return mapping.__class__(zip(mapping.keys(), map(func, mapping.values())))
 
 
 def rev_enumerate(iterable, length=None):
