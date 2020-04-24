@@ -29,14 +29,14 @@ def _build_objects(f, o):
         s = mat_struct()
         for k,v in o.items():
             setattr(s, k, _build_objects(f, v))
-        return
+        return s
 
     else:
         x = o[()]
         assert np.issubdtype(x.dtype, np.number)
         if x.shape == (1,1):
             return x[0,0]
-        elif x.shape == (1, x.shape):
+        elif x.shape == (1, x.size):
             return x.flatten()
         else:
             return x
@@ -54,11 +54,11 @@ def _loadmat_v7(filename, variable_names = None):
         if k in ignore:
             continue
         vardict[k] = _build_objects(h5, v)
-
+    h5.close()
     return vardict
 
 def _clean(x):
-    """Fix up scipy.io output (cells should be lists"""
+    """Fix up scipy.io output - Matlab cells should become lists"""
     if isinstance(x, np.ndarray):
         if np.issubdtype(x.dtype, np.object_) and isinstance(x.flat[0], np.ndarray):
             return _map_numpy_to_list(x, _clean)
