@@ -271,13 +271,12 @@ if __name__ == '__main__':
     submit.add_argument("--dryrun", action='store_true',
                    help="Don't submit anything.  Useful for debugging.")
     submit.add_argument("target",
-                   help="target file to run.  The TARGET must accept a --slurmid switch, and when given this option, "
+                   help="target file to run.  The TARGET must accept a --slurminfo switch, and when given this option, "
                         "should print a JSON string to STDOUT containing all the necessary information before "
                         "exiting.  Furthermore, the last positional argument of TARGET must be an integer; "
                         "this is what is passed to the TARGET based on the "
                         "supplied ARRAY_RANGE.  Thus TARGET must support usage as follows: "
-                        "`target --slurmid [target_args]"
-                        "idx`.")
+                        "`target --slurminfo [target_args] idx`.")
     submit.add_argument("target_args", nargs="*",
                    help="Arguments to pass through to TARGET.  If optional arguments are being passed to TARGET "
                         "(arguments beginning with `-`, then this list must be prefixed with `--`.")
