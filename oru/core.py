@@ -6,6 +6,7 @@ import json
 from collections import defaultdict, OrderedDict
 import os
 import functools
+import lzma
 
 memoise = functools.lru_cache(maxsize=None)
 
@@ -28,11 +29,8 @@ class frozendict(Mapping):
     An immutable wrapper around dictionaries that implements the complete :py:class:`collections.Mapping`
     interface. It can be used as a drop-in replacement for dictionaries where immutability is desired.
     """
-
-    dict_cls = dict
-
     def __init__(self, *args, **kwargs):
-        self._dict = self.dict_cls(*args, **kwargs)
+        self._dict = dict(*args, **kwargs)
         self._hash = None
 
     def __getitem__(self, key):
@@ -60,6 +58,25 @@ class frozendict(Mapping):
                 h ^= hash((key, value))
             self._hash = h
         return self._hash
+
+    # def to_json_dict(self, has_complex_keys=False):
+    #     for k in self.keys():
+    #         if not (isinstance(k, (str, int, bool, float)) or k is None):
+    #             break
+    #     else:
+    #         return self._dict.copy()
+    #
+    #     return JSONDictWrapper(self._dict.copy())
+    #
+    #
+    # @classmethod
+    # def from_json_dict(cls, data):
+    #     if isinstance(data, dict):
+    #         new = cls()
+    #         new._dict = data
+    #         return new
+    #     else:
+    #         return cls((d['key'], d['val']) for d in data)
 
 
 
@@ -121,18 +138,6 @@ class Stopwatch:
     def times(self):
         return self._times
 
-@dataclasses.dataclass
-class JSONSerialisableDataclass:
-    def to_json_file(self, filename):
-        with open(filename, 'w') as f:
-            json.dump(dataclasses.asdict(self),f)
-
-    @classmethod
-    def from_json_file(cls, filename):
-        with open(filename,'r') as f:
-            d = json.load(f)
-
-        return cls(**d)
 
 
 @dataclasses.dataclass(eq=False, frozen=True)

@@ -4,10 +4,11 @@ import dacite
 
 from typing import ClassVar, Dict, Any, Tuple, Union, NewType, Callable
 from .constants import _GUROBI_MODEL_ATTR, INFO_ATTR_TO_MODEL_ATTR, EPS
-from .core import take, JSONSerialisableDataclass
+from .core import take
 from gurobi import *
 from functools import wraps
 from collections import deque
+from .json import JSONSerialisableDataclass
 
 VarDict = Dict[Union[int, Tuple[int, ...]], Var]
 
