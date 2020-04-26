@@ -240,11 +240,15 @@ def command_push(args):
             for src,dest in [(out,out_dest), (err, err_dest)]:
                 try:
                     shutil.copyfile(src,dest)
+                    remove = True
                 except FileNotFoundError:
-                    panic(f'Missing directory: ' + os.path.dirname(dest))
+                    print(f"error creating logfile {src}: missing directory {dest}")
+                    # panic(f'Missing directory: ' + os.path.dirname(dest))
+                    remove = False
 
-            os.remove(out)
-            os.remove(err)
+            if remove:
+                os.remove(out)
+                os.remove(err)
 
 def check_sbatch():
     global SBATCH_COMMAND, SBATCH_FAKE
