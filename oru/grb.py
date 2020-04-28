@@ -24,15 +24,17 @@ class IntVarDict(VarDict):
 class CtsVarDict(VarDict):
     pass
 
+
 class CtsVar(Var):
     pass
+
 
 class BinVar(Var):
     pass
 
+
 class IntVar(Var):
     pass
-
 
 
 @dataclasses.dataclass
@@ -87,10 +89,13 @@ class GurobiModelInformation(JSONSerialisableDataclass):
     # LP-only
     kappa: float
 
+
 def _wrap_callback(callback):
-    def wrapped_callback(model : Model, where):
+    def wrapped_callback(model: Model, where):
         return callback(model._parent, where)
+
     return wrapped_callback
+
 
 def pprint_constraint(cons: Constr, model: Model, eps=EPS):
     lhs = ''
@@ -225,6 +230,10 @@ class ModelWrapper:
 
     @property
     def ObjVal(self):
+        """
+        The objective value for the current solution. If the model was solved to optimality, then this attribute gives
+        the optimal objective value.  Otherwise, ``None`` is returned.
+        """
         try:
             return self.model.getAttr("ObjVal")
         except AttributeError:
@@ -232,6 +241,16 @@ class ModelWrapper:
 
     @property
     def ObjBound(self):
+        """
+        The best known bound on the optimal objective. When solving a MIP model, the algorithm maintains both a lower
+        bound and an upper bound on the optimal objective value. For a minimization model, the upper bound is the
+        objective of the best known feasible solution, while the lower bound gives a bound on the best possible
+        objective.
+
+        In contrast to ObjBoundC, this attribute takes advantage of objective integrality information to round to a
+        tighter bound. For example, if the objective is known to take an integral value and the current best bound is
+        1.5, ObjBound will return 2.0 while ObjBoundC will return 1.5.
+        """
         try:
             return self.model.getAttr("ObjBound")
         except AttributeError:
@@ -239,6 +258,16 @@ class ModelWrapper:
 
     @property
     def ObjBoundC(self):
+        """
+        The best known bound on the optimal objective. When solving a MIP model, the algorithm maintains both a lower
+        bound and an upper bound on the optimal objective value. For a minimization model, the upper bound is the
+        objective of the best known feasible solution, while the lower bound gives a bound on the best possible
+        objective.
+
+        In contrast to ObjBound, this attribute does not take advantage of objective integrality information to round
+        to a tighter bound. For example, if the objective is known to take an integral value and the current best
+        bound is 1.5, ObjBound will return 2.0 while ObjBoundC will return 1.5.
+        """
         try:
             return self.model.getAttr("ObjBoundC")
         except AttributeError:
@@ -847,7 +876,7 @@ class ModelWrapper:
         """
         return self.model.getCol(var)
 
-    def getConcurrentEnv(self, num : int):
+    def getConcurrentEnv(self, num: int):
         """
         Create/retrieve a concurrent environment for a model.
 
@@ -865,7 +894,7 @@ class ModelWrapper:
         """
         return self.model.getConcurrentEnv(num)
 
-    def getConstrByName(self, name : str):
+    def getConstrByName(self, name: str):
         """
         Retrieve a linear constraint from its name. If multiple linear constraints have the same name, this method
         chooses one arbitrarily.
@@ -927,7 +956,7 @@ class ModelWrapper:
     def getTuneResult(self):
         return self.model.getTuneResult()
 
-    def getVarByName(self, name : str):
+    def getVarByName(self, name: str):
         return self.model.getVarByName(name)
 
     def getVars(self):
@@ -999,6 +1028,7 @@ class ModelWrapper:
     def write(self, filename):
         self.model.write(filename)
 
+
 class BaseGurobiModel(ModelWrapper):
     def __init__(self, name=""):
         super().__init__(name=name)
@@ -1022,7 +1052,7 @@ class BaseGurobiModel(ModelWrapper):
             elif attrtype == CtsVar:
                 self.__ctsvars__.append(attrname)
                 self.__lonevars__.append(attrname)
-            elif attrtype in (VarDict,Var):
+            elif attrtype in (VarDict, Var):
                 raise TypeError("VarDict/Var should not be used to denote variables, use BinVarDict, IntVarDict or "
                                 "CtsVarDict, or their *Var equivalents instead.")
             else:
@@ -1044,7 +1074,7 @@ class BaseGurobiModel(ModelWrapper):
 
     @property
     def cons_size(self):
-        return {key : 1 if isinstance(val, Constr) else len(val) for key,val in self.cons.items()}
+        return {key: 1 if isinstance(val, Constr) else len(val) for key, val in self.cons.items()}
 
     def set_vars_attrs(self, **kwargs):
         """Convenience function to set the variable dictionaries on a model, checking if all have been provided. """
@@ -1106,19 +1136,21 @@ class BaseGurobiModel(ModelWrapper):
                     vardict = getattr(self, var_attr)
 
                     setattr(self, val_attr,
-                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(list(vardict.values()))) if v > eps))
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetSolution(list(vardict.values()))) if
+                                 v > eps))
             elif where == GRB.Callback.MIPNODE:
                 if var_attr in self.__lonevars__:
                     setattr(self, val_attr, self.cbGetNodeRel(getattr(self, var_attr)))
                 else:
                     vardict = getattr(self, var_attr)
                     setattr(self, val_attr,
-                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(list(vardict.values()))) if v > eps))
+                            dict((k, v) for k, v in zip(vardict.keys(), self.cbGetNodeRel(list(vardict.values()))) if
+                                 v > eps))
             else:
                 raise ValueError("`where` is must be one of: None, GRB.Callback.MIPSOL, GRB.Callback.MIPNODE")
 
     def flush_cut_cache(self):
-        total =0
+        total = 0
         for constraint_name in self.cut_cache:
             if isinstance(self.cut_cache[constraint_name], dict):
                 self.cons[constraint_name] = dict()
@@ -1155,12 +1187,12 @@ class BaseGurobiModel(ModelWrapper):
             self.cut_cache[cache].append(cut)
             self.cut_cache_size += 1
 
-    def cbCut(self, cut : TempConstr, cache : str =None, cache_key=None):
+    def cbCut(self, cut: TempConstr, cache: str = None, cache_key=None):
         super().cbCut(cut)
         if cache is not None:
             self._add_cut_to_cache(cut, cache, cache_key)
 
-    def cbLazy(self, cut : TempConstr, cache : str =None, cache_key=None):
+    def cbLazy(self, cut: TempConstr, cache: str = None, cache_key=None):
         super().cbLazy(cut)
         if cache is not None:
             self._add_cut_to_cache(cut, cache, cache_key)
@@ -1173,12 +1205,13 @@ class TempModelParameters:
     """
     Context manager which temporarily sets parameters and restores them after.
     """
-    def __init__(self, model : BaseGurobiModel, **param_val_pairs):
+
+    def __init__(self, model: BaseGurobiModel, **param_val_pairs):
         self.model = model
         self.old_parameters = dict()
         self.new_parameters = param_val_pairs
-        for param,new_val in param_val_pairs.items():
-            _,_, old_val,_,_,_ = model.getParamInfo(param)
+        for param, new_val in param_val_pairs.items():
+            _, _, old_val, _, _, _ = model.getParamInfo(param)
             self.old_parameters[param] = old_val
 
     def __enter__(self):
@@ -1186,5 +1219,5 @@ class TempModelParameters:
             self.model.setParam(param, val)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for param,val in self.old_parameters.items():
-            self.model.setParam(param,val)
+        for param, val in self.old_parameters.items():
+            self.model.setParam(param, val)
