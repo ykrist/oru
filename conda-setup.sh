@@ -1,12 +1,12 @@
 #/bin/bash
 set -e
-ORU_ROOT_DIR=$(readlink -f $0 | xargs dirname)
-ORU_BIN_DIR=$ORU_ROOT_DIR/bin
-ORU_ENV_FILE_NAME="oru_path_env.sh"
+PKG_ROOT_DIR=$(readlink -f $0 | xargs dirname)
+PKG_BIN_DIR=$PKG_ROOT_DIR/bin
+PKG_ENV_FILE_NAME="oru_path_env.sh"
 ACTIVATE_DIR=${CONDA_PREFIX}/etc/conda/activate.d
-ACTIVATE_FILE=${ACTIVATE_DIR}/${ORU_ENV_FILE_NAME}
+ACTIVATE_FILE=${ACTIVATE_DIR}/${PKG_ENV_FILE_NAME}
 DEACTIVATE_DIR=${CONDA_PREFIX}/etc/conda/deactivate.d
-DEACTIVATE_FILE=${DEACTIVATE_DIR}/${ORU_ENV_FILE_NAME}
+DEACTIVATE_FILE=${DEACTIVATE_DIR}/${PKG_ENV_FILE_NAME}
 
 function install {
   while true ; do
@@ -20,8 +20,8 @@ function install {
   conda develop .
   mkdir -p $ACTIVATE_DIR $DEACTIVATE_DIR
 
-  ACTIVATE_CMD="export PATH=\$PATH:${ORU_BIN_DIR}:"
-  DEACTIVATE_CMD="export PATH=\$(echo \$PATH | sed 's!:${ORU_BIN_DIR}:!!')"
+  ACTIVATE_CMD="export PATH=\$PATH:${PKG_BIN_DIR}:"
+  DEACTIVATE_CMD="export PATH=\$(echo \$PATH | sed 's!:${PKG_BIN_DIR}:!!')"
 
   echo -e "#!/bin/sh\n${ACTIVATE_CMD}" >  $ACTIVATE_FILE
   echo -e "#!/bin/sh\n${DEACTIVATE_CMD}" > $DEACTIVATE_FILE
@@ -30,7 +30,7 @@ function install {
 };
 
 function uninstall {
-  conda develop -u $ORU_ROOT_DIR
+  conda develop -u $PKG_ROOT_DIR
   rm -f $ACTIVATE_FILE
   rm -f $DEACTIVATE_FILE
   echo "successfully uninstalled."
