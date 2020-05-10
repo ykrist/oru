@@ -138,6 +138,31 @@ class Stopwatch:
     def times(self):
         return self._times
 
+def dict_diff(a: Mapping, b: Mapping):
+    """
+    Returns a nested dictionary representing the recursive difference of ``a`` and ``b``.
+    """
+    d = {}
+    for k, va in a.items():
+        if k not in b:
+            d[k] = 'missing from B'
+        else:
+            vb = b[k]
+            if type(va) == type(vb):
+                if va != vb:
+                    if isinstance(va, Mapping):
+                        d[k] = dict_diff(va, vb)
+                    else:
+                        d[k] = f"value mismatch: (A) {va!s} != {vb!s} (B)"
+            else:
+                d[k] = f"value type mismatch: (A) {type(va).__name__} != {type(vb).__name__!s} (B)"
+
+    for k in b:
+        if k not in a:
+            d[k] = 'missing from A'
+
+    return d
+
 
 
 @dataclasses.dataclass(eq=False, frozen=True)
