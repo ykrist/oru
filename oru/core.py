@@ -2,11 +2,9 @@ from . import constants as _C
 from typing import Dict, Iterable, Callable, Any, Union, Mapping
 import time
 import dataclasses
-import json
 from collections import defaultdict, OrderedDict
 import os
 import functools
-import lzma
 
 memoise = functools.lru_cache(maxsize=None)
 

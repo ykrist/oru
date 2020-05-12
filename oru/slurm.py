@@ -5,8 +5,10 @@ import sys
 import os
 import cerberus
 import hashlib
+from pathlib import Path
 from typing import Dict, Tuple
 from .logging import TablePrinter
+import copy
 
 SLURM_INFO_OPTIONAL_FIELDS = (
     "job-name",
@@ -59,7 +61,7 @@ def _validate_and_raise(validator, document, schema=None):
 
 def _strip_custom_keywords(d, keep_derived_fields = True):
     custom_keywords = ('derived', 'help')
-    s = d.copy()
+    s = copy.deepcopy(d)
     for key in list(s.keys()):
         if not keep_derived_fields and s[key].get('derived', False):
             del s[key]
@@ -112,19 +114,23 @@ def build_help_message(name, rules, arg_class : str):
 
     return help_msg
 
+class ExperimentValidator(cerberus.Validator):
+    types_mapping = cerberus.Validator.types_mapping.copy()
+    types_mapping['path'] = cerberus.TypeDefinition('path', (Path,), ())
+
+
 class Experiment:
     INPUTS = {"index" : {"type" : "integer", "min" : 0}}
     OUTPUTS = None
     PARAMETERS = {}
-    ROOT_PATH = "."
+    ROOT_PATH = Path.cwd()
     PATH_SEP = "_"
 
     def __init__(self, inputs, outputs, parameters=None):
         if parameters is None:
             parameters = dict()
 
-        v = cerberus.Validator(require_all=True)
-
+        v = ExperimentValidator(require_all=True)
 
         self.inputs = _validate_and_raise(v, inputs, _strip_custom_keywords(self.INPUTS, False))
         self.outputs = _validate_and_raise(v, outputs, _strip_custom_keywords(self.OUTPUTS, False))
@@ -181,13 +187,12 @@ class Experiment:
         return self.PATH_SEP.join(str(self.inputs[iname]) for iname in sorted(self.inputs.keys()))
 
     @property
-    def directory(self):
+    def directory(self) -> Path:
         """Directory in which experiment results shall be placed."""
         if self._directory is None:
-            self._directory = os.path.join(self.ROOT_PATH, self.parameter_string)
-            os.makedirs(self._directory, exist_ok=True)
-            paramsfile = os.path.join(self._directory, "parameters.json")
-            with open(paramsfile, 'w') as fp:
+            self._directory = self.ROOT_PATH / self.parameter_string
+            self._directory.mkdir(parents=True, exist_ok=True)
+            with open(self._directory/ "parameters.json", 'w') as fp:
                 json.dump(self.parameters, fp, indent='\t')
         return self._directory
 
@@ -195,7 +200,7 @@ class Experiment:
         """Output files should be created using a file path obtained from this method."""
         if not suffix.startswith('.'):
             suffix = self.PATH_SEP + suffix
-        return os.path.join(self.directory, self.input_string + suffix)
+        return self.directory/(self.input_string + suffix)
 
     @classmethod
     def get_parser_arguments(cls) -> Dict[str, Tuple[Tuple, Dict]]:
