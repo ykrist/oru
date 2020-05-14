@@ -1,38 +1,5 @@
 import numpy as np
 from functools import wraps
-import svgpathtools
-import bs4
-import cmath
-
-def graphviz_svg_align_edge_labels(src_svg, dest_svg=None, y_shift_px = 10):
-    if dest_svg is None:
-        dest_svg = src_svg
-
-    with open(src_svg, 'r') as f:
-        xml = f.read()
-    s = bs4.BeautifulSoup(xml, "xml")
-
-    for edgetag in s.find_all(attrs={"class" : "edge"}):
-        text = edgetag.find("text", recursive=False)
-        if text is None:
-            continue
-        path = edgetag.find('path', recursive=False).attrs['d']
-        if path is None:
-            continue
-        path = svgpathtools.parse_path(path)
-        orientation = cmath.phase(path.unit_tangent(0.5))*180/cmath.pi
-        center = path.point(0.5)
-        x,y = center.real, center.imag
-        y -= y_shift_px
-        text.attrs["transform"] = f"rotate({orientation},{x},{y})"
-        text.attrs['x'] = str(x)
-        text.attrs['y'] = str(y)
-
-    with open(dest_svg, "w") as f:
-        f.write(str(s))
-
-
-
 
 def P(a,b):
     return np.array([a,b])
