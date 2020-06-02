@@ -326,7 +326,12 @@ class Experiment:
         if "mail-user" not in cl_opts and "mail-type" in cl_opts:
             del cl_opts['mail-type']
 
-        return json.dumps(cl_opts, indent='\t')
+        def convert_types(x):
+            if isinstance(x, Path):
+                return str(x.absolute())
+            return x
+
+        return json.dumps(cl_opts, indent='\t', default=convert_types)
 
     @staticmethod
     def format_time(seconds : int) -> str:
