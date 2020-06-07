@@ -82,7 +82,7 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
             array_job_ids = []
             for filename in arglist:
                 with open(filename, 'r') as f:
-                    array_job_ids.extend(map(lambda x: x.strip().split(), f))
+                    array_job_ids.extend(map(lambda x: x.strip(), f))
         else:
             array_job_ids = arglist
 
