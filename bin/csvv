@@ -1,0 +1,22 @@
+#!/usr/bin/env python
+import argparse
+import tabulate
+import csv
+from oru import posix
+
+if __name__ == '__main__':
+    posix.setup_sigpipe()
+    p = argparse.ArgumentParser(description="CSV Viewer.  Pretty-prints CSVs.")
+    p.add_argument('csvfile', default='-',
+                   help="Path to CSV file, defaults to STDIN", nargs='?')
+    p.add_argument('-s','--sep',type=str,default=',',
+                   help="Column separator. Default is `%(default)s`")
+    p.add_argument('-f', '--fmt', type=str, default='plain',
+                   help="Table format. Must be once of: "+",".join(tabulate.tabulate_formats) +
+                        ".  Default is %(default)s.")
+    args = p.parse_args()
+
+    with posix.open_default_stdin(args.csvfile) as f:
+        contents = list(map(lambda s : s.strip().split(args.sep), f))
+
+    print(tabulate.tabulate(contents, tablefmt=args.fmt))
