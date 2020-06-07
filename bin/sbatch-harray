@@ -82,7 +82,7 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
             array_job_ids = []
             for filename in arglist:
                 with open(filename, 'r') as f:
-                    array_job_ids.extend(map(lambda x: x.strip(), f))
+                    array_job_ids.extend(map(lambda x: x.strip().split(), f))
         else:
             array_job_ids = arglist
 
@@ -103,7 +103,7 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
             values = []
             for filename in a:
                 with open(filename, 'r') as f:
-                    values.extend(map(lambda x : x.strip(), f))
+                    values.extend(map(lambda x : x.strip().split(), f))
         else:
             values = a
 
@@ -175,13 +175,22 @@ def parse_target(args):
     prog_args, slurm_proto_ids =  get_arguments(arglist, slurm_array_index)
     if len(arg_indices) == 0:
         for a in prog_args:
-            commands.append( prog + list(a))
+            p = prog.copy()
+            for v in a:
+                if isinstance(v, list):
+                    p.extend(v)
+                else:
+                    p.append(v)
+            commands.append(p)
     else:
         for arguments in prog_args:
             p = prog.copy()
             for i,a in enumerate(arguments):
                 if i in arg_indices:
                     p[arg_indices[i]] = a
+
+            p = [x if isinstance(x, list) else [x] for x in p]
+            p = [x for y in p for x in y]
             commands.append(p)
 
     return commands, slurm_proto_ids
