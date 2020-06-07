@@ -103,7 +103,7 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
             values = []
             for filename in a:
                 with open(filename, 'r') as f:
-                    values.extend(map(lambda x : x.strip().split(), f))
+                    values.extend(filter(lambda l : len(l) > 0, map(lambda x : x.strip().split()), f))
         else:
             values = a
 
