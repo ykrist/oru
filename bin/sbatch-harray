@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import oru.slurm
+import oru.posix
 import argparse
 import subprocess
 import sys
@@ -157,7 +158,7 @@ def parse_target(args):
 
         elif command[i] == ':::+' or command[i] == '::::+':
             if not found_arg_sep:
-                raise UserError('the first argument seperator cannot be linking (:::+ or ::::+)')
+                raise UserError('the first argument separator cannot be linking (:::+ or ::::+)')
             indices.append(i)
             command[i] = ArgSepToken.SEP_LINK if command[i] == ':::+' else ArgSepToken.SEP_FILE_LINK
     indices.append(len(command))
@@ -466,6 +467,7 @@ if __name__ == '__main__':
                                               'in the Slurm queue.')
     push.set_defaults(func=command_push)
 
+    oru.posix.setup_sigpipe()
     if len(argv) == 0:
         p.print_usage()
         sys.exit(1)
