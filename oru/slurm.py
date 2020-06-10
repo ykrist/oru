@@ -5,26 +5,51 @@ import sys
 import os
 import cerberus
 import hashlib
+import warnings
 from pathlib import Path
 from typing import Dict, Tuple
 from .logging import TablePrinter
 import copy
 
+class SLURM_INFO:
+    TIME = 'time'
+    JOB_NAME = 'job-name'
+    MAIL_USER = 'mail-user'
+    MAIL_TYPE = 'mail-type'
+    NODES = 'nodes'
+    MEMORY = 'mem'
+    CPUS_PER_TASK = 'cpus-per-task'
+    CONSTRAINT = 'constraint'
+    SCRIPT = 'script'
+    LOG_OUT = 'out'
+    LOG_ERR = 'err'
+
 SLURM_INFO_OPTIONAL_FIELDS = (
-    "job-name",
-    "time",
-    "mail-user",
-    "mail-type",
-    "nodes",
-    "mem",
-    "cpus-per-task",
-    "constraint",
+    SLURM_INFO.JOB_NAME,
+    SLURM_INFO.TIME,
+    SLURM_INFO.MAIL_USER,
+    SLURM_INFO.MAIL_TYPE,
+    SLURM_INFO.NODES,
+    SLURM_INFO.MEMORY,
+    SLURM_INFO.CPUS_PER_TASK,
+    SLURM_INFO.CONSTRAINT,
 )
 SLURM_INFO_REQUIRED_FIELDS = (
-    "script",
-    "out",
-    "err",
+    SLURM_INFO.SCRIPT,
+    SLURM_INFO.LOG_OUT,
+    SLURM_INFO.LOG_ERR, # TODO: make optional (need to adjust database)
 )
+
+
+def slurm_format_time(seconds: int) -> str:
+    seconds = int(seconds)
+    minutes = seconds // 60
+    seconds -= minutes * 60
+    hours = minutes // 60
+    minutes -= hours * 60
+    days = hours // 24
+    hours -= days * 24
+    return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
 
 def parse_slurm_info(jsonstr):
     info = json.loads(jsonstr)
@@ -335,14 +360,10 @@ class Experiment:
 
     @staticmethod
     def format_time(seconds : int) -> str:
-        seconds = int(seconds)
-        minutes = seconds//60
-        seconds -= minutes*60
-        hours = minutes//60
-        minutes -= hours*60
-        days = hours//24
-        hours -= days*24
-        return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
+        import warnings
+        warnings.warn("format_time() method is deprecated, use the slurm_format_time() function instead.",
+                      DeprecationWarning, stacklevel=2)
+        return slurm_format_time(seconds)
 
     def print_summary_table(self,col_widths=(30, 50), justify=(">", "<")):
         output = TablePrinter(["", ""], print_header=False, col_widths=col_widths, justify=justify)
