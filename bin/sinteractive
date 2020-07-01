@@ -15,6 +15,7 @@ if __name__ == '__main__':
     print('running:',' '.join(srun), file=sys.stderr)
     sys.stderr.flush()
     try:
-        os.execvp(srun[0],srun[1:])
+        os.execvp(srun[0],srun)
     except FileNotFoundError:
         print("error: srun not found on PATH",file=sys.stderr)
+        
