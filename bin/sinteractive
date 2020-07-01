@@ -18,4 +18,3 @@ if __name__ == '__main__':
         os.execvp(srun[0],srun)
     except FileNotFoundError:
         print("error: srun not found on PATH",file=sys.stderr)
-        

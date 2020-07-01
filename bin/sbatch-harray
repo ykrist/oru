@@ -260,7 +260,7 @@ def retrieve_queue_job_ids():
     return list(map(lambda x : x.strip(), stdout.split('\n')[1:]))
 
 class SlurmArrayJob:
-    def __init__(self, sbatch_opts : Dict[str,str], script_preamble : str):
+    def __init__(self, sbatch_opts : Dict[str,str], script_preamble : str, name=None):
         self._index = 0
         self.indices = []
         self.sbatch_opts = sbatch_opts
@@ -268,6 +268,7 @@ class SlurmArrayJob:
         self.index_to_name = {}
         self.index_to_logs = {}
         self.index_cmd = {}
+        self.name = name
 
     def add_job(self, name : str, out : str, err : str, cmd : List[str], index=None):
         if index is None:
@@ -292,6 +293,8 @@ class SlurmArrayJob:
         sbatch_args = []
         for key, val in self.sbatch_opts.items():
             sbatch_args.extend(("--" + key, val))
+        if self.name is not None:
+            sbatch_args.extend(("--job-name", self.name))
         sbatch_args.extend(("--array", format_indices(self.indices)))
         sbatch_args.extend(("--out", os.path.join(SLURM_LOG_DIR, '%A_%a.out')))
         sbatch_args.extend(("--err", os.path.join(SLURM_LOG_DIR, '%A_%a.err')))
@@ -312,7 +315,7 @@ def command_submit(args):
             sbatch_opts = dict(array_job_group)
             del sbatch_opts['proto_id']
             script_preamble = sbatch_opts.pop('script')
-            array_jobs[array_job_group] = SlurmArrayJob(sbatch_opts, script_preamble)
+            array_jobs[array_job_group] = SlurmArrayJob(sbatch_opts, script_preamble, name=args.name)
 
         array_jobs[array_job_group].add_job(slurm_info.get('job-name', 'null'), slurm_info['out'],
                                          slurm_info['err'], command, index=j_id)
@@ -443,6 +446,8 @@ if __name__ == '__main__':
     submit.add_argument('-i', '--index', type=int, default=None,
                         help="Use the argument list specified by INDEX as the Slurm array job index. "
                              "The argument list specified must consist only of non-negative integers.")
+    submit.add_argument('-n', '--name', type=str, default=None,
+                        help="Give a name to the set of jobs to be filed.  Will be shown only in Slurm's db.")
     submit.add_argument("target",
                    help="target command to run.   It should be a shell command, followed by arguments lists, each "
                         "preceded by SEP, which is one of: :::, :::+, ::::+ or ::::.  "
