@@ -51,6 +51,14 @@ def slurm_format_time(seconds: int) -> str:
     hours -= days * 24
     return f'{days:d}-{hours:02d}:{minutes:02d}:{seconds:02d}'
 
+def slurm_parse_time(s : str) -> int:
+    m = re.fullmatch(r'((?P<d>\d+)-)?(?P<h>\d\d):(?P<m>\d\d):(?P<s>\d\d)', s)
+    if m is None:
+        raise ValueError("Bad time format: should be [d-]hh:mm:ss")
+    m = {k : int(v) for k,v in m.groupdict(0).items()}
+    return 60*(60*(24*m['d'] + m['h']) + m['m']) + m['s']
+
+
 def parse_slurm_info(jsonstr):
     info = json.loads(jsonstr)
     info_fields = set(info.keys())
