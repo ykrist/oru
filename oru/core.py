@@ -1,5 +1,5 @@
 from . import constants as _C
-from typing import Dict, Iterable, Callable, Any, Union, Mapping
+from typing import Dict, Iterable, Callable, Any, Union, Mapping, TypeVar
 import time
 import dataclasses
 from collections import defaultdict, OrderedDict
@@ -22,7 +22,9 @@ def get_keys_with_nonzero_val(d : Dict, X_attr=False, eps=_C.EPS):
     return list(sorted(k for k, v in d.items() if abs(getval(v)) > eps))
 
 
-class frozendict(Mapping):
+_K = TypeVar('_K')
+_V = TypeVar('_V')
+class frozendict(Mapping[_K,_V]):
     """
     An immutable wrapper around dictionaries that implements the complete :py:class:`collections.Mapping`
     interface. It can be used as a drop-in replacement for dictionaries where immutability is desired.
