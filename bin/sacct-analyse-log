@@ -11,8 +11,8 @@ if __name__ == '__main__':
     args = p.parse_args()
 
     pd.options.display.max_rows = 999
-    with posix.open_default_stdin(args.log, mode='r'):
-        log = pd.read_csv("itsrsp-run1-sacct.csv", index_col="JobID")
+    with posix.open_default_stdin(args.log, mode='r') as fp:
+        log = pd.read_csv(fp, index_col="JobID")
 
     prop_time = log['ElapsedRaw']/log['TimelimitRaw']
     prop_mem = log['MaxRSS']/log['ReqMem']
@@ -26,11 +26,21 @@ if __name__ == '__main__':
 
     display_cols = ['Elapsed', 'Timelimit', 'MaxRSS-f', 'ReqMem-f', 'State']
 
-    print('Timeouts:')
-    print(log.loc[mask_timeout, display_cols])
+    
+    timeouts = log.loc[mask_timeout, display_cols]
 
-    print("\nLikely needs more memory:")
-    print(log.loc[mask_mem & mask_fail & ~mask_timeout, display_cols])
+    if len(timeouts) > 0:
+        print('Timeouts:')
+        print(timeouts)
 
-    print('\nOther failures:')
-    print(log.loc[~mask_mem & mask_fail & ~mask_timeout, display_cols])
+
+
+    oom = log.loc[mask_mem & mask_fail & ~mask_timeout, display_cols]
+    if len(oom) > 0:
+        print("\nLikely needs more memory:")
+        print(oom)
+
+    other_fail = log.loc[~mask_mem & mask_fail & ~mask_timeout, display_cols]
+    if len(other_fail) > 0:
+        print('\nOther failures:')
+        print(other_fail)
