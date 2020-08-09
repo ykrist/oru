@@ -72,3 +72,31 @@ class StructStreamParser:
 
         return stream_packet_header_fmt, stream_packet_fixedlen_types, stream_packet_varlen_types
 
+
+class PipeReader:
+    fp : io.BufferedReader
+    def __init__(self, proc, fd : int):
+        self.fp = open(fd, 'rb')
+        self.proc = proc
+
+    def read(self, n):
+        buf = memoryview(bytearray(n))
+        m = 0
+        while m < n:
+            k = self.fp.readinto(buf[m:])
+            if k is None:
+                if self.proc.poll() is not None:
+                    break
+            else:
+                m += k
+
+        buf = bytes(buf[:m])
+        return buf
+
+    def close(self):
+        self.fp.close()
+
+def nonblocking_subprocess_pipe():
+    (p_r, p_w) = os.pipe()
+    os.set_blocking(p_r, False)
+    return p_r, p_w
