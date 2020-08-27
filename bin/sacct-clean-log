@@ -42,7 +42,7 @@ def parse_array_job_id(s):
 def process_sacct_log(filename : str) -> pd.DataFrame:
     with posix.open_default_stdin(filename, mode='r') as fp:
         df = pd.read_csv(fp, sep='|', index_col='JobID')
-
+    df.drop(df[df.index.map(lambda s : '[' in s)].index, inplace=True)
     batch_steps = df.index.map(lambda x : x.endswith('.batch')).values.astype(np.bool)
     jobs = df.loc[~batch_steps, :].copy()
     batch_steps = df.copy().loc[batch_steps, :]
@@ -61,15 +61,32 @@ def process_sacct_log(filename : str) -> pd.DataFrame:
     jobs['JobArrayIndex'] = list(map(lambda x : x[1], arrayjob_id))
     jobs['JobArrayID'] = list(map(lambda x : x[0], arrayjob_id))
     jobs['TimelimitRaw'] = jobs['Timelimit'].apply(slurm_parse_time)
+
+    for f in args.filters:
+        f(jobs)
+
     jobs.sort_values(['JobArrayID', 'JobArrayIndex'], inplace=True)
     return jobs
+
+def create_filter(column, pattern):
+    r = re.compile(pattern)
+    def f(df : pd.DataFrame):
+        mapfunc = lambda s : r.search(str(s)) is None
+        if column == df.index.name:
+            mask = df.index.map(mapfunc)
+        else:
+            mask = df[column].map(mapfunc)
+        df.drop(df[mask].index, inplace=True)
+    return f
 
 if __name__ == '__main__':
     posix.setup_sigpipe()
     p = argparse.ArgumentParser()
     p.add_argument('logfile', type=str, default='-', nargs='?')
     p.add_argument('outfile', type=str, default='-', nargs='?')
+    p.add_argument('-f', '--filter', nargs=2, action='append', dest='filters', default=[])
     args = p.parse_args()
+    args.filters = [create_filter(*f) for f in args.filters]
     df = process_sacct_log(args.logfile)
     with posix.open_default_stdout(args.outfile, "w") as fp:
         df.to_csv(fp)
