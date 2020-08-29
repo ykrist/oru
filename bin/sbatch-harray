@@ -18,6 +18,7 @@ from typing import Dict, List, Tuple
 import pygments
 from pygments.lexers.shell import BashLexer
 from pygments.formatters.terminal256 import Terminal256Formatter
+import json
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),'.sbatch-harray.data.d')
 DATABASE_FILE = os.path.join(DATA_DIR, 'db')
@@ -246,11 +247,47 @@ async def retrieve_slurm_info(commands):
                 try:
                     slurm_json = oru.slurm.parse_slurm_info(slurm_json.decode())
                 except Exception as e:
-                    raise UserError(f"failed to parse slurm information: " + str(e) + "\nSTDOUT\n" + proc.stdout)
+                    raise UserError(f"failed to parse slurm information: " + str(e) + "\nSTDOUT\n" + proc.stdout.read())
 
         return slurm_json
 
     return await asyncio.gather(*[get_info(c) for c in commands])
+
+class SlurmInfoError(Exception):
+    pass
+
+async def _pipe_server_run(pr, pw, commands):
+    _, slurm_info = await asyncio.gather(_pipe_server_write_input(pw, commands), _pipe_server_read_output(pr))
+    return slurm_info
+
+async def _pipe_server_write_input(pw, commands):
+    with open(pw, 'w') as fp:
+        json.dump(commands, fp)
+
+async def _pipe_server_read_output(pr):
+    with open(pr, 'r') as fp:
+        slurm_info = json.load(fp)
+    return slurm_info
+
+
+def retrieve_slurm_info_pipe_server(commands):
+    if len(commands) == 0:
+        return []
+
+    (cr, pw) = os.pipe()
+    (pr, cw) = os.pipe()
+
+    cmd = commands[0] + ['--p-slurminfo', str(cr), str(cw)]
+    try:
+        proc = subprocess.Popen(cmd, pass_fds=(cr, cw))
+        os.close(cr)
+        os.close(cw)
+        slurm_info = asyncio.run(_pipe_server_run(pr, pw, commands))
+        proc.wait()
+    except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
+        raise SlurmInfoError("unable to retrieve slurm info",cmd, e)
+    return slurm_info
+
 
 def retrieve_queue_job_ids():
     if SBATCH_FAKE:
@@ -305,7 +342,13 @@ def command_submit(args):
     commands = [list(filter(lambda x : x != '--', c)) for c in commands]
     check_sbatch()
     array_jobs : Dict[frozendict, SlurmArrayJob] = {}
-    index_slurm_info =  asyncio.run(retrieve_slurm_info(commands))
+
+    try:
+        index_slurm_info = retrieve_slurm_info_pipe_server(commands)
+    except SlurmInfoError as e:
+        print(f"warning: {e.args[0]}: command `{' '.join(e.args[1])}` failed:\n\t{type(e.args[2]).__name__}: {e.args[2]!s}")
+        print("Spawning individual processes instead")
+        index_slurm_info = asyncio.run(retrieve_slurm_info(commands))
 
     for command,slurm_info,(a_id, j_id) in zip(commands, index_slurm_info, slurm_array_job_indices):
         array_job_group = list((k,slurm_info.pop(k)) for k in list(slurm_info.keys()) if k in SLURM_INFO_AGGREGATABLE)

@@ -2,14 +2,14 @@ import argparse
 import json
 import re
 import sys
-import os
 import cerberus
 import hashlib
-import warnings
 from pathlib import Path
 from typing import Dict, Tuple
 from .logging import TablePrinter
 import copy
+from functools import lru_cache
+import dataclasses
 
 class SLURM_INFO:
     TIME = 'time'
@@ -39,6 +39,20 @@ SLURM_INFO_REQUIRED_FIELDS = (
     SLURM_INFO.LOG_OUT,
     SLURM_INFO.LOG_ERR, # TODO: make optional (need to adjust database)
 )
+
+ARGPARSE_SLURMINFO_ARGS = {
+    "slurminfo": (("--slurminfo",),
+                  {'action': 'store_true',
+                   'help': "print SLURM information as a JSON string and exit."}),
+    "p_slurminfo": (("--p-slurminfo",),
+                    {'type': int,
+                     'metavar': 'FD',
+                     'nargs': 2,
+                     'default': None,
+                     'help': "Start pipe slurm-info server, reading input from the pipe with file descriptor FD"
+                             "and writing to STDOUT",
+                     }),
+}
 
 
 def slurm_format_time(seconds: int) -> str:
@@ -114,6 +128,33 @@ _CERBERBUS_TYPE_TO_PYTHON_TYPE = {
  "number" : float
 }
 
+class ErrorCatchingArgumentParser(argparse.ArgumentParser):
+    def exit(self, status=0, message=None):
+        if status:
+            raise Exception(message)
+        exit(status)
+
+@lru_cache(None)
+def _python_interpreter_arg_parser():
+    flags = list('bBdEhiIOqsSuvVx')
+    flags.append('OO')
+    p = ErrorCatchingArgumentParser(add_help=False)
+    for f in flags:
+        p.add_argument(f'-{f}', action='store_true')
+    p.add_argument('-W', nargs=1)
+    p.add_argument('-X', nargs=1)
+    p.add_argument('--check-hash-based-pycs', choices=('always', 'default', 'never'))
+    p.add_argument('python')
+    p.add_argument('file')
+    p.add_argument('args', nargs=argparse.REMAINDER)
+    return p
+
+def strip_python_args(argv):
+    p = _python_interpreter_arg_parser()
+    try:
+        return p.parse_args(argv).args
+    except Exception as e:
+        raise ValueError(f"unable to strip python args: {e!s}")
 
 def build_help_message(name, rules, arg_class : str):
     arg_class = arg_class.upper()
@@ -177,6 +218,7 @@ class Experiment:
         self.outputs = _validate_and_raise(v, self.outputs,  _strip_custom_keywords(self.OUTPUTS, True))
         self.parameters = _validate_and_raise(v, self.parameters,  _strip_custom_keywords(self.PARAMETERS, True))
 
+
     @classmethod
     def from_cl_args(cls, args=None):
         """Alternate constructor."""
@@ -184,19 +226,46 @@ class Experiment:
         cl_args = cls.get_parser_arguments()
         for pargs, pkwargs in cl_args.values():
             p.add_argument(*pargs, **pkwargs)
+
         if args is None:
             args = sys.argv[1:]
+
         inputs = vars(p.parse_args(args))
         paramsfile = inputs.pop("load_params")
         slurminfo = inputs.pop("slurminfo")
+        pipe_slurminfo = inputs.pop('p_slurminfo')
+
+        def convert_types_json(x):
+            if isinstance(x, Path):
+                return str(x.absolute())
+            return x
+
+        if pipe_slurminfo is not None:
+            pr, pw = pipe_slurminfo
+            with open(pr, 'r') as fp:
+                args_list = json.load(fp)
+
+            slurm_info_list = []
+            for argv in args_list:
+                argv = strip_python_args(argv)
+                exp = cls.from_cl_args(argv)
+                slurm_info_list.append(exp.get_slurminfo())
+
+            with open(pw, 'w') as fp:
+                json.dump(slurm_info_list, fp, default=convert_types_json)
+
+            sys.exit(0)
+
         parameters = {pname : inputs.pop(pname) for pname in cls.PARAMETERS}
         if paramsfile is not None:
             with open(paramsfile, 'r') as fp:
                 parameters = json.load(fp)
         experiment = cls(inputs, {}, parameters)
+
         if slurminfo:
-            print(experiment.get_slurminfo_json_string())
+            print(json.dumps(experiment.get_slurminfo(), default=convert_types_json, indent='\t'))
             sys.exit(0)
+
         return experiment
 
     def define_derived(self):
@@ -241,15 +310,13 @@ class Experiment:
         This should return a dictionary mapping an input/parameter name to args and kwargs, which will be
          to ArgumentParser.add_argument (see argparse docs)"""
         cl_arguments =  {
-            "slurminfo" : (("--slurminfo",),
-                           {'action':'store_true',
-                            'help' : "print SLURM information as a JSON string and exit."}),
             "load_params" : (("--load-params",),
                              {'type' : str,
                               'help' : "Load parameters from a JSON file.  All parameter-related arguments are ignored.",
                               "default" : None,
                               'metavar' : "JSONFILE"
-                            })
+                            }),
+            **ARGPARSE_SLURMINFO_ARGS
         }
         for name, rules in cls.INPUTS.items():
             if rules.get('derived', False):
@@ -340,7 +407,7 @@ class Experiment:
     def resource_slurm_script(self):
         raise NotImplementedError
 
-    def get_slurminfo_json_string(self):
+    def get_slurminfo(self):
         cl_opts = {
             "time" : self.resource_time,
             "job-name" : self.resource_name,
@@ -359,12 +426,7 @@ class Experiment:
         if "mail-user" not in cl_opts and "mail-type" in cl_opts:
             del cl_opts['mail-type']
 
-        def convert_types(x):
-            if isinstance(x, Path):
-                return str(x.absolute())
-            return x
-
-        return json.dumps(cl_opts, indent='\t', default=convert_types)
+        return cl_opts
 
     @staticmethod
     def format_time(seconds : int) -> str:
@@ -391,3 +453,72 @@ class Experiment:
         for k in sorted(self.outputs):
             output.print_line(k, self.outputs[k])
         output.print_hline()
+
+class PipeSlurmInfoAction(argparse.Action):
+    def __init__(self,
+                 option_strings,
+                 dest,
+                 nargs=None,
+                 const=None,
+                 default=None,
+                 type=None,
+                 choices=None,
+                 required=False,
+                 help=None,
+                 metavar=None):
+        super().__init__(option_strings, dest, nargs, const, default, type, choices, required, help, metavar)
+
+    def __call__(self, parser, ns, args, _=None):
+        pr, pw = args
+        pr = int(pr)
+        pw = int(pw)
+        with open(pr, 'r') as fp:
+            args_list = json.load(fp)
+
+        slurm_info_list = []
+        for argv in args_list:
+            argv = strip_python_args(argv)
+            slurm_info = ns.get_slurm_info(parser.parse_args(argv)).to_json_dict()
+            slurm_info_list.append(slurm_info)
+
+        with open(pw, 'w') as fp:
+            json.dump(slurm_info_list, fp)
+
+        parser.exit(0)
+
+
+# Simpler, functional API
+@dataclasses.dataclass(frozen=True)
+class SlurmInfo:
+    script : str
+    log_err : str
+    log_out : str
+    job_name : str = None
+    time : str = None
+    mail_user : str = None
+    mail_type : str= None
+    nodes : int = None
+    memory : str = None
+    cpus : int = None
+    constraint : str = None
+
+    def to_json_dict(self):
+        d = dataclasses.asdict(self)
+        name_map = {'log_out' : 'out', 'log_err' : 'err', 'cpus' : 'cpus-per-task', 'memory' : 'mem'}
+        d['time'] = slurm_format_time(d['time'])
+        return {name_map.get(k, k.replace('_', '-')) : str(v) for k,v in d.items() if v is not None}
+
+
+def create_parser(parser : argparse.ArgumentParser = None) -> argparse.ArgumentParser:
+    parser = parser or argparse.ArgumentParser()
+    for argname, (args, kwargs) in ARGPARSE_SLURMINFO_ARGS.items():
+        if argname == 'p_slurminfo':
+            kwargs['action'] = PipeSlurmInfoAction
+        parser.add_argument(*args, dest=argname, **kwargs)
+    return parser
+
+def parse_args(parser : argparse.ArgumentParser, get_slurm_info, argv=None):
+    ns = argparse.Namespace(get_slurm_info=get_slurm_info)
+    args = parser.parse_args(argv, namespace=ns)
+    delattr(ns, 'get_slurm_info')
+    return args
