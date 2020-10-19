@@ -167,6 +167,12 @@ class TablePrinter:
         if len(vals) > self.ncols:
             self.print_line(*vals[self.ncols:])
 
+    def print_line_by_fields(self, fields, fill=""):
+        if self.header is None:
+            raise ValueError("header must be set")
+        line = [fields.get(f, "") for f in self.header]
+        self.print_line(*line, fill=fill)
+
     def print_hline(self):
         print('-'*self.total_width)
 
