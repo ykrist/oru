@@ -318,45 +318,49 @@ class Experiment:
                             }),
             **ARGPARSE_SLURMINFO_ARGS
         }
+
+        def create_argp_args(name, rulesdict, arg_class):
+            assert rulesdict.get("type", None) != "boolean" or "default" in rulesdict, "Boolean types must have a default"
+            kwargs = {}
+            if arg_class == "parameter" or "default" in rulesdict:
+                argname = "--" + name.replace("_", "-")
+                if "default" in rulesdict:
+                    kwargs['default'] = rulesdict['default']
+                    kwargs['required'] = False
+                else:
+                    kwargs['required'] = True
+                kwargs["dest"] = name
+            elif arg_class == "input":
+                argname = name
+            else:
+                raise ValueError("arg_class must be `input` or `parameter")
+
+            argtype = rules.get('type', None)
+            if argtype == "boolean":
+                if kwargs.pop('default', False):
+                    argname = "--no-" + argname.lstrip('-')
+                    kwargs = {"dest": name}
+                    kwargs['action'] = 'store_false'
+                else:
+                    kwargs['action'] = 'store_true'
+
+            elif argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
+                kwargs['type'] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
+
+            kwargs['help'] = build_help_message(name, rules, arg_class)
+
+            return ((argname,), kwargs)
+
+
         for name, rules in cls.INPUTS.items():
             if rules.get('derived', False):
                 continue
-
-            argname = name.replace("_", "-")
-            kwargs = {'help' : build_help_message(name, rules, 'input')}
-            argtype = rules.get('type', None)
-            if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
-                kwargs["type"] = _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
-
-            if 'default' in rules:
-                kwargs['default'] = rules['default']
-                argname = "--" + argname
-            cl_arguments[name] = ((argname,), kwargs)
-
+            cl_arguments[name] = create_argp_args(name, rules, "input")
 
         for name, rules in cls.PARAMETERS.items():
             if rules.get('derived', False):
                 continue
-
-            argname = "--" + name.replace("_", "-")
-            kwargs = {"dest" : name}
-            if 'default' in rules:
-                kwargs['default'] = rules['default']
-                kwargs['required'] = False
-            else:
-                kwargs['required'] = True
-            argtype = rules.get('type', None)
-            if argtype in _CERBERBUS_TYPE_TO_PYTHON_TYPE:
-                kwargs['type'] =  _CERBERBUS_TYPE_TO_PYTHON_TYPE[argtype]
-                if kwargs['type'] == bool:
-                    if kwargs.pop('default', False):
-                        argname = "--no-" + argname.lstrip('-')
-                        kwargs['action'] = 'store_false'
-                    else:
-                        kwargs['action'] = 'store_true'
-                    del kwargs['type']
-            kwargs['help'] = build_help_message(name, rules, 'parameter')
-            cl_arguments[name] = ((argname, ), kwargs)
+            cl_arguments[name] = create_argp_args(name, rules, "parameter")
 
         return cl_arguments
 
