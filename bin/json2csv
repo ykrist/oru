@@ -117,6 +117,15 @@ def expand_tuplekeys(d: FlatDict, sep: str) -> FlatDict:
 def join_tuplekeys(d: FlatDict, sep: str) -> Dict[str, Any]:
     return map_keys(lambda tuplekey: sep.join(tuplekey), d)
 
+def dedup(l : list):
+    seen = set()
+    new_l = []
+    for i in l:
+        if i in seen:
+            continue
+        seen.add(i)
+        new_l.append(i)
+    return new_l
 
 def main(args):
     if args.input.count('-') > 1:
@@ -175,7 +184,7 @@ def main(args):
             data[i] = join_tuplekeys(data[i], args.level_sep)
 
     if args.csv:
-        csv_fields = set(itertools.chain(*map(lambda r: r.keys(), data)))
+        csv_fields = dedup(itertools.chain(*map(lambda r: r.keys(), data)))
         if args.index is None:
             index_field_name = 'index'
             index_suffix = 0
@@ -192,7 +201,7 @@ def main(args):
                     raise ValueError(f"Column {index_field_name} with missing data (row {n}) cannot be used as index.")
             csv_fields.remove(index_field_name)
 
-        csv_fields = [index_field_name] + sorted(csv_fields)
+        csv_fields = [index_field_name] + list(csv_fields)
         csv_writer = csv.DictWriter(sys.stdout, csv_fields, extrasaction='ignore')
         csv_writer.writeheader()
 

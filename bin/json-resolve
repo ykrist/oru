@@ -1,0 +1,83 @@
+#!/usr/bin/env python
+
+import json
+import argparse
+import sys
+import re
+from pathlib import Path
+from oru.posix import setup_sigpipe, open_default_stdin, open_default_stdout
+
+def try_load_json_file(p : Path):
+    try:
+        p = p.resolve()
+    except ValueError as e:
+        return (None, f"`{p}` doesn't look like a valid filepath: {e!s}")
+
+    try:
+        with open(p, 'r') as fp:
+            return (json.load(fp), None)
+    except Exception as e:
+        return (None, f"Unable to read `{p}`: {e!s}")
+
+def log(msg):
+    print(msg, file=sys.stderr)
+
+
+def resolve_files(val, rootpath : Path, regexp : re.Pattern, verbose=True) -> dict:
+    if isinstance(val, dict):
+        for k,v in val.items():
+            val[k] = resolve_files(v, rootpath, regexp, verbose)
+
+    elif isinstance(val, list):
+        val = [resolve_files(v, rootpath, regexp, verbose) for v in val]
+
+    elif isinstance(val, str) and regexp.search(val) is not None:
+        newval, reason = try_load_json_file(rootpath/val)
+
+        if newval is not None:
+            val = resolve_files(newval, rootpath, regexp, verbose)
+        elif verbose:
+            log(reason)
+
+    return val
+
+
+
+if __name__ == '__main__':
+    p = argparse.ArgumentParser()
+    p.add_argument("input", default='-', nargs="?")
+    p.add_argument("output", default="-", nargs="?")
+    p.add_argument("-v", "--verbose", action='store_true')
+    p.add_argument("-m", "--match", default=r"\.json$",
+                   help="REGEXP to match strings by, default is '%(default)s'.")
+    p.add_argument("--cwd", action="store_true",
+                   help="Find files relative to the current working directory rather than relative to the input file,"
+                        " if input is STDIN this is always the case.")
+    args = p.parse_args()
+    args.cwd = args.cwd or args.input == "-"
+    setup_sigpipe()
+
+    try:
+        with open_default_stdin(args.input) as fp:
+            d = json.load(fp)
+    except Exception as e:
+        log("error: unable to read input file: " + str(e))
+        sys.exit(1)
+
+    try:
+        r = re.compile(args.match)
+    except Exception as e:
+        log("error: bad regexp: " + str(e))
+        sys.exit(1)
+
+    rootpath = Path.cwd() if args.cwd else Path(args.input).parent
+    d = resolve_files(d, rootpath, r, verbose=args.verbose)
+
+    try:
+        with open_default_stdout(args.output) as fp:
+            json.dump(d, fp)
+            fp.write("\n")
+            
+    except Exception as e:
+        log("error: unable to write to file: " + str(e))
+        sys.exit(1)

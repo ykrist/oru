@@ -76,5 +76,5 @@ if __name__ == '__main__':
             contents = list(map(lambda li : parse_line(li[1], li[0]), enumerate(f)))
         except ParseError as e:
             print(f"error on line {e.lineno:4d}: {e.msg}")
-
+            quit(1)
     print(tabulate.tabulate(contents, tablefmt=args.fmt))
