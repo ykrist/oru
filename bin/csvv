@@ -10,9 +10,12 @@ class ParseError(BaseException):
         self.lineno = lineno
 
 class LineParser:
-    def __init__(self, sep=",", quote_chars=("'", "\"")):
+    def __init__(self, float_fmt=None, int_fmt=None, sep=",", quote_chars=("'", "\"")):
         self.sep=sep
         self.quote_chars=quote_chars
+        self.parse_numbers = float_fmt is not None or int_fmt is not None
+        self.float_fmt = f"{{:{float_fmt}}}" if float_fmt is not None else None
+        self.int_fmt = f"{{:{int_fmt}}}" if int_fmt is not None else None
 
     def __call__(self, line : str, lineno=None):
         line = line.strip()
@@ -52,8 +55,32 @@ class LineParser:
         ends.append(len(line))
         tokens = []
         for i,j in zip(starts, ends):
-            tokens.append(line[i:j])
+            token = line[i:j]
+            if self.parse_numbers:
+                token = self.format_number(self.try_parse_number(token))
+            tokens.append(token)
+
         return tokens
+
+    def try_parse_number(self, num):
+        try:
+            return int(num)
+        except ValueError:
+            pass
+
+        try:
+            return float(num)
+        except ValueError:
+            pass
+
+        return num
+
+    def format_number(self, val):
+        if self.float_fmt and  isinstance(val, float):
+            return self.float_fmt.format(val)
+        else:
+            return str(val)
+
 
 if __name__ == '__main__':
     posix.setup_sigpipe()
@@ -68,13 +95,17 @@ if __name__ == '__main__':
     p.add_argument('-f', '--fmt', type=str, default='plain',
                    help="Table format. Must be once of: "+",".join(tabulate.tabulate_formats) +
                         ".  Default is %(default)s.")
+    p.add_argument('-F', '--float', type=str, default=None,
+                   help="Python floating point format string.  Default is none, which does not format floats.")
 
     args = p.parse_args()
-    parse_line = LineParser(args.sep, args.delim)
+    parse_line = LineParser(sep=args.sep, quote_chars=args.delim, float_fmt=args.float)
     with posix.open_default_stdin(args.csvfile) as f:
         try:
             contents = list(map(lambda li : parse_line(li[1], li[0]), enumerate(f)))
         except ParseError as e:
             print(f"error on line {e.lineno:4d}: {e.msg}")
             quit(1)
-    print(tabulate.tabulate(contents, tablefmt=args.fmt))
+
+    floatfmt = args.float or tabulate._DEFAULT_FLOATFMT
+    print(tabulate.tabulate(contents, tablefmt=args.fmt, floatfmt=floatfmt))
