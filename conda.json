@@ -1,5 +1,0 @@
-{
-  "name" : "oru",
-  "package-root" : "oru/",
-  "bin-paths" : ["bin/"]
-}

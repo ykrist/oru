@@ -1,23 +1,13 @@
 #!/usr/bin/env python
 import cerberus
 import json
-import os
-from textwrap import dedent
 from pathlib import Path
 import subprocess
-
-CONDA_INFO = None
-
-def ensure_conda_info():
-    global CONDA_INFO
-    if CONDA_INFO is None:
-        CONDA_INFO = json.loads(subprocess.check_output(["conda", "info", "--json"], text=True))
+from oru.constants import CONDA_INFO
+import yaml
 
 def conda_prefix() -> Path:
-    prefix = os.environ.get("CONDA_PREFIX")
-    if not prefix:
-        raise Exception("CONDA_PREFIX env var not defined (are you in a conda environment?)")
-    return Path(prefix)
+    return Path(CONDA_INFO["active_prefix"])
 
 def activate_dir() -> Path:
     return conda_prefix() / Path("etc/conda/activate.d")
@@ -77,14 +67,12 @@ def get_package_root(data) -> Path:
 
 def load_data(conda_file: Path):
     with open(conda_file, 'r') as fp:
-        data = json.load(fp)
-
+        data = yaml.load(fp, yaml.CSafeLoader)
 
     data['file'] = conda_file.resolve()
     return data
 
 def confirm_conda_env():
-    ensure_conda_info()
     env_name = CONDA_INFO['active_prefix_name']
     while True:
         char = input(f"install into environment `{env_name}` [y/n]").strip()
@@ -125,9 +113,8 @@ if __name__ == '__main__':
 
     p = argparse.ArgumentParser()
     p.add_argument("cmd", choices=["install", "uninstall"])
-    p.add_argument("conda_file", type=Path, default=Path("conda.json"), nargs='?')
+    p.add_argument("conda_file", type=Path, default=Path("conda.yaml"), nargs='?')
     args = p.parse_args()
-    # args.conda_file = Path("/home/yannik/phd/pkgs/oru/tests/conda.json")
 
     if args.cmd == "install":
         do_install(args)
