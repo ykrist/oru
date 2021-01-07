@@ -1,4 +1,4 @@
 name: oru
-package-root: oru/
+package-root: .
 bin-paths:
   - bin/

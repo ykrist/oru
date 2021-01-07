@@ -3,8 +3,14 @@ import cerberus
 import json
 from pathlib import Path
 import subprocess
-from oru.constants import CONDA_INFO
 import yaml
+
+try:
+    from oru.constants import CONDA_INFO
+except ImportError:
+    import sys
+    sys.path.append(str(Path(__file__).parent.parent.resolve()))
+    from oru.constants import CONDA_INFO
 
 def conda_prefix() -> Path:
     return Path(CONDA_INFO["active_prefix"])
@@ -85,7 +91,8 @@ def confirm_conda_env():
 
 def do_install(args):
     data = load_data(args.conda_file)
-    confirm_conda_env()
+    if not args.skip_confirm:
+        confirm_conda_env()
     ensure_activate_init_script()
     ensure_deactivate_script()
     if len(data['bin-paths']) > 0:
@@ -113,6 +120,9 @@ if __name__ == '__main__':
 
     p = argparse.ArgumentParser()
     p.add_argument("cmd", choices=["install", "uninstall"])
+    p.add_argument("-y", action="store_true", help="Install without confirming conda environment.", dest="skip_confirm")
+
+
     p.add_argument("conda_file", type=Path, default=Path("conda.yaml"), nargs='?')
     args = p.parse_args()
 
