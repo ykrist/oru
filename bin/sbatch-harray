@@ -37,11 +37,12 @@ SLURM_INFO_AGGREGATABLE = {
     'mail-type',
     'constraint',
     'time',
-    'script'
+    'script',
+    'job-name',
 }
 
 SLURM_INFO_NOT_AGGREGATABLE = {
-    'job-name',
+    'name',
     'out',
     'err'
 }
@@ -361,7 +362,7 @@ def command_submit(args):
             script_preamble = sbatch_opts.pop('script')
             array_jobs[array_job_group] = SlurmArrayJob(sbatch_opts, script_preamble, name=args.name)
 
-        array_jobs[array_job_group].add_job(slurm_info.get('job-name', 'null'), slurm_info['out'],
+        array_jobs[array_job_group].add_job(slurm_info.get('name', 'null'), slurm_info['out'],
                                          slurm_info['err'], command, index=j_id)
 
 

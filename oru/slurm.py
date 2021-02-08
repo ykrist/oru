@@ -14,6 +14,7 @@ import dataclasses
 class SLURM_INFO:
     TIME = 'time'
     JOB_NAME = 'job-name'
+    NAME = 'name'
     MAIL_USER = 'mail-user'
     MAIL_TYPE = 'mail-type'
     NODES = 'nodes'
@@ -403,6 +404,10 @@ class Experiment:
         return self.get_output_path('.err')
 
     @property
+    def resource_job_name(self) -> str:
+        return '%j'
+
+    @property
     def resource_name(self) -> str:
         return '%j-{index:d}'.format_map(self.inputs)
 
@@ -417,7 +422,8 @@ class Experiment:
     def get_slurminfo(self):
         cl_opts = {
             "time" : self.resource_time,
-            "job-name" : self.resource_name,
+            "job-name" : self.resource_job_name,
+            "name" : self.resource_name,
             "out" : self.resource_stdout_log,
             "err" : self.resource_stderr_log,
             "mem" : self.resource_memory,
@@ -508,6 +514,7 @@ class SlurmInfo:
     memory : str = None
     cpus : int = None
     constraint : str = None
+    name: str = None
 
     def to_json_dict(self):
         d = dataclasses.asdict(self)
@@ -516,6 +523,7 @@ class SlurmInfo:
         return {name_map.get(k, k.replace('_', '-')) : str(v) for k,v in d.items() if v is not None}
 
 
+# Alternate function-based API
 def create_parser(parser : argparse.ArgumentParser = None) -> argparse.ArgumentParser:
     parser = parser or argparse.ArgumentParser()
     for argname, (args, kwargs) in ARGPARSE_SLURMINFO_ARGS.items():
@@ -524,6 +532,7 @@ def create_parser(parser : argparse.ArgumentParser = None) -> argparse.ArgumentP
         parser.add_argument(*args, dest=argname, **kwargs)
     return parser
 
+# Alternate function-based API
 def parse_args(parser : argparse.ArgumentParser, get_slurm_info, argv=None):
     ns = argparse.Namespace(get_slurm_info=get_slurm_info)
     args = parser.parse_args(argv, namespace=ns)
