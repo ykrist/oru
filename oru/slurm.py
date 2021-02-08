@@ -49,8 +49,8 @@ ARGPARSE_SLURMINFO_ARGS = {
                      'metavar': 'FD',
                      'nargs': 2,
                      'default': None,
-                     'help': "Start pipe slurm-info server, reading input from the pipe with file descriptor FD"
-                             "and writing to STDOUT",
+                     'help': "Start slurm-info pipe server. Takes two file desciptors (FD) corresponding to pipes.  "
+                             "Reads input from the first file descriptor and writes to the second."
                      }),
 }
 
@@ -175,10 +175,13 @@ def build_help_message(name, rules, arg_class : str):
             arg_class_description = f'{arg_class}: Enable {name}'
     else:
         if 'default' in rules:
+            default = rules['default']
+            if isinstance(default, str):
+                default = f"'{default}'"
             if len(domain_help) > 0:
-                domain_help += " (default is %(default)s)"
+                domain_help += f" (default is {default})"
             else:
-                domain_help = "Default is %(default)s"
+                domain_help = f"Default is {default}"
 
         arg_class_description = f'{arg_class}: {name}'
 

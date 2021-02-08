@@ -19,6 +19,7 @@ import pygments
 from pygments.lexers.shell import BashLexer
 from pygments.formatters.terminal256 import Terminal256Formatter
 import json
+import itertools
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),'.sbatch-harray.data.d')
 DATABASE_FILE = os.path.join(DATA_DIR, 'db')
@@ -114,7 +115,7 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
         else:
             prod.append(((x,) for x in values))
 
-    import itertools
+
     prod = [list(l) for l in prod]
     arguments = list(map(lambda tt: tuple(e for t in tt for e in t), product(*prod)))
 
@@ -512,7 +513,7 @@ if __name__ == '__main__':
     clear.set_defaults(func=command_clear)
 
     push = subparsers.add_parser('push', help='Push pending log files to their destinations.  Only affects jobs not '
-                                              'in the Slurm queue.')
+                                              'currently in the Slurm queue.')
     push.set_defaults(func=command_push)
 
     oru.posix.setup_sigpipe()
