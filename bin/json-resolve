@@ -19,11 +19,12 @@ if __name__ == '__main__':
     p.add_argument("-v", "--verbose", action='store_true')
     p.add_argument("-m", "--match", default=r"\.json$",
                    help="REGEXP to match strings by, default is '%(default)s'.")
-    p.add_argument("--cwd", action="store_true",
-                   help="Find files relative to the current working directory rather than relative to the input file,"
-                        " if input is STDIN this is always the case.")
+    p.add_argument("-d", "--dir", default=None, type=Path,
+                   help="Find files relative to %(metavar)s rather than relative to the input file."
+                        " If input is STDIN this option is implied with %(metavar)s = current working directory.")
     args = p.parse_args()
-    args.cwd = args.cwd or args.input == "-"
+    if args.dir is None and args.input == "-":
+        args.dir = Path.cwd()
     setup_sigpipe()
 
     try:
@@ -39,7 +40,7 @@ if __name__ == '__main__':
         log("error: bad regexp: " + str(e))
         sys.exit(1)
 
-    rootpath = Path.cwd() if args.cwd else Path(args.input).parent
+    rootpath = args.dir if args.dir is not None else Path(args.input).parent
     d = resolve_files(d, rootpath, pattern, logger=log if args.verbose else None)
 
     try:
