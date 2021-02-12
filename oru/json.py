@@ -39,20 +39,20 @@ def _try_load_json_file(p : Path):
 
 DEFAULT_RESOLVE_PATTERN = re.compile('\.json$')
 
-def resolve_files(val, rootpath : Path, regexp : re.Pattern = DEFAULT_RESOLVE_PATTERN, logger=None) -> dict:
+def resolve_files(val, rootpath : Path, regexp : re.Pattern = DEFAULT_RESOLVE_PATTERN, callback=None) -> dict:
     if isinstance(val, dict):
         for k,v in val.items():
-            val[k] = resolve_files(v, rootpath, regexp, logger)
+            val[k] = resolve_files(v, rootpath, regexp, callback)
 
     elif isinstance(val, list):
-        val = [resolve_files(v, rootpath, regexp, logger) for v in val]
+        val = [resolve_files(v, rootpath, regexp, callback) for v in val]
 
     elif isinstance(val, str) and regexp.search(val) is not None:
         newval, reason = _try_load_json_file(rootpath / val)
 
         if newval is not None:
-            val = resolve_files(newval, rootpath, regexp, logger)
-        elif logger is not None:
-            logger(reason)
+            val = resolve_files(newval, rootpath, regexp, callback)
+        elif callback is not None:
+            callback(rootpath / val, reason)
 
     return val
