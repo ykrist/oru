@@ -47,14 +47,13 @@ def selector(name):
     return decorator
 
 
-
 @selector(TO)
 def _(log):
     return log['State'] == 'TIMEOUT'
 
 @selector(OOM)
 def _(log):
-    return ~SELECTORS[S](log) & ((log['MaxRSS']/log['ReqMem']) > THRESH_OOM) & ~SELECTORS[TO](log)
+    return ~SELECTORS[S](log) & ((log['MaxRSS']/log['ReqMem']) > THRESH_OOM)
 
 @selector(S)
 def _(log):
@@ -74,7 +73,7 @@ def _(log):
     return SELECTORS[S](log) & ((log['ElapsedRaw']/log['TimelimitRaw']) < THRESH_TUU)
 
 def print_table(selector, log : pd.DataFrame):
-    display_cols = ['Elapsed', 'Timelimit', 'MaxRSS-f', 'ReqMem-f', 'State']
+    display_cols = ['JobName', 'Elapsed', 'Timelimit', 'MaxRSS-f', 'ReqMem-f', 'State']
     mask = SELECTORS[selector](log)
     display = log.loc[mask, display_cols]
     if len(display) > 0:
@@ -106,9 +105,6 @@ if __name__ == '__main__':
 
     for c in ['MaxRSS', 'ReqMem']:
         log[c + "-f"] = log[c].apply(lambda mem : f"{mem*10/2**30:.2f}Gb")
-
-    display_cols = ['Elapsed', 'Timelimit', 'MaxRSS-f', 'ReqMem-f', 'State']
-    timeouts = log.loc[mask_timeout, display_cols]
 
     if args.id_only is None:
         if args.verbose:
