@@ -6,11 +6,13 @@ import subprocess
 import yaml
 
 try:
-    from oru.constants import CONDA_INFO
+    from oru.constants import get_conda_info
 except ImportError:
     import sys
     sys.path.append(str(Path(__file__).parent.parent.resolve()))
-    from oru.constants import CONDA_INFO
+    from oru.constants import get_conda_info
+
+CONDA_INFO = get_conda_info()
 
 def conda_prefix() -> Path:
     return Path(CONDA_INFO["active_prefix"])

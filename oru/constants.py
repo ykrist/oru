@@ -1,7 +1,9 @@
 import subprocess
 import json
+from functools import lru_cache
 
-def _get_conda_info():
+@lru_cache(maxsize=None)
+def get_conda_info():
     return json.loads(subprocess.check_output(["conda", "info", "--json"], text=True))
 
 _GUROBI_MODEL_ATTR = {
@@ -60,4 +62,3 @@ _GUROBI_MODEL_ATTR = {
 
 INFO_ATTR_TO_MODEL_ATTR = {v: k for k, v in _GUROBI_MODEL_ATTR.items()}
 EPS=1e-4
-CONDA_INFO=_get_conda_info()
