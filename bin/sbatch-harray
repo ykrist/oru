@@ -371,8 +371,8 @@ def command_submit(args):
         for array_job in array_jobs.values():
             bash_script_contents = array_job.get_job_script()
             bash_script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-            bash_script_file.file.write(bash_script_contents)
-            bash_script_file.file.close()
+            bash_script_file.write(bash_script_contents)
+            bash_script_file.close()
 
             command = SBATCH_COMMAND + array_job.get_sbatch_args()
             if args.dryrun:
@@ -383,7 +383,6 @@ def command_submit(args):
                 print("-" * 80)
                 print(" ".join(command))
                 print(bash_script_file.name.center(80, '-'))
-                # print(bash_script_contents)
                 print(pygments.highlight(bash_script_contents, BashLexer(), Terminal256Formatter(style='monokai')))
                 print("-" * 80)
 
