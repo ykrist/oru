@@ -249,7 +249,8 @@ async def retrieve_slurm_info(commands):
                 try:
                     slurm_json = oru.slurm.parse_slurm_info(slurm_json.decode())
                 except Exception as e:
-                    raise UserError(f"failed to parse slurm information: " + str(e) + "\nSTDOUT\n" + proc.stdout.read())
+                    stdout = await proc.stdout.read()
+                    raise UserError(f"failed to parse slurm information: " + str(e) + "\nSTDOUT:\n" + stdout.decode())
 
         return slurm_json
 
@@ -287,7 +288,7 @@ def retrieve_slurm_info_pipe_server(commands):
         slurm_info = asyncio.run(_pipe_server_run(pr, pw, commands))
         proc.wait()
     except (subprocess.CalledProcessError, json.JSONDecodeError) as e:
-        raise SlurmInfoError("unable to retrieve slurm info",cmd, e)
+        raise SlurmInfoError("unable to retrieve slurm info", cmd, e)
     return slurm_info
 
 
@@ -331,7 +332,7 @@ class SlurmArrayJob:
     def get_sbatch_args(self):
         sbatch_args = []
         for key, val in self.sbatch_opts.items():
-            sbatch_args.extend(("--" + key, val))
+            sbatch_args.extend(("--" + key, str(val)))
         if self.name is not None:
             sbatch_args.extend(("--job-name", self.name))
         sbatch_args.extend(("--array", format_indices(self.indices)))
