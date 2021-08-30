@@ -1,9 +1,15 @@
 import json
 import dataclasses
 import lzma
-from typing import TextIO, Dict
+from typing import Dict, Tuple, Any
 from pathlib import Path
 import re
+from .core import map_keys
+
+NestedDict = Dict[str, Dict]
+Key = str
+TupleKey = Tuple[Key, ...]
+FlatDict = Dict[TupleKey, Any]
 
 
 @dataclasses.dataclass
@@ -56,3 +62,32 @@ def resolve_files(val, rootpath : Path, regexp : re.Pattern = DEFAULT_RESOLVE_PA
             callback(rootpath / val, reason)
 
     return val
+
+def flatten_dictionary(d: NestedDict, _prefix=()) -> FlatDict:
+    new_d = {}
+    for key in d:
+        new_key = _prefix + (key,)
+        if isinstance(d[key], dict) and len(d[key]) > 0:
+            new_d.update(flatten_dictionary(d[key], new_key))
+        else:
+            new_d[new_key] = d[key]
+    return new_d
+
+
+def unflatten_dictionary(d: FlatDict) -> NestedDict:
+    new_d = {}
+    for reckey in d:
+        current_d = new_d
+        for key in reckey[:-1]:
+            if key not in current_d:
+                current_d[key] = {}
+            current_d = current_d[key]
+        current_d[reckey[-1]] = d[reckey]
+    return new_d
+
+def expand_tuplekeys(d: FlatDict, sep: str) -> FlatDict:
+    return map_keys(lambda tuplekey: tuple(k for key in tuplekey for k in key.split(sep)), d)
+
+
+def join_tuplekeys(d: FlatDict, sep: str) -> Dict[str, Any]:
+    return map_keys(lambda tuplekey: sep.join(tuplekey), d)
