@@ -226,7 +226,7 @@ if __name__ == '__main__':
                                help="Produce JSON output that is exactly 1 level deep.")
     outputcontrol.add_argument("--unflatten", action='store_true',
                                help="Convert flattened JSON to nested JSON (inverse of --flatten).")
-    outputcontrol.add_argument("--csv", action='store_true', default=True,
+    outputcontrol.add_argument("--csv", action='store_true',
                                help="Convert into a CSV file, where each JSON output is one row in the output.  "
                                     "Nested JSON keys will be converted to column names in the same manner as `--flatten`.")
 
