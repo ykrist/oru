@@ -228,6 +228,10 @@ class ModelWrapper:
         except AttributeError:
             return None
 
+    @ObjCon.setter
+    def ObjCon(self, val: float):
+        self.model.setAttr("ObjCon", val)
+
     @property
     def ObjVal(self):
         """
