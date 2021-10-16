@@ -361,10 +361,11 @@ def call_sbatch(args: List[str], bash_script: str, dryrun: bool, verbose=False) 
         while True:
             try:
                 i = command.index("-d")
-                command.remove(i+1)
-                command.remove(i)
             except ValueError:
                 break
+            else:
+                del command[i + 1]
+                del command[i]
 
     job_id = subprocess.check_output(command, input=bash_script, text=True).strip()
     print(f'Submitted job ID {job_id}')
