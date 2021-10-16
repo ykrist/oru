@@ -84,10 +84,10 @@ def get_arguments(arglists : List[List], slurm_array_index=None):
             values = []
             for filename in arglist[1:]:
                 with open(filename, 'r') as f:
-                    values.extend(filter(lambda l : len(l) > 0, map(lambda x : x.strip().split(), f)))
+                    values.extend(filter(lambda l : len(l) > 0, map(lambda x : x.strip(), f)))
             arglist[1:] = values
-            arglist[0] = septype & ArgSepToken.SEP_LINK
-
+            arglist[0] = ArgSepToken(septype & ArgSepToken.SEP_LINK)
+            
     if slurm_array_index is not None:
         arglist = arglists[slurm_array_index]
         array_job_ids = arglist[1:]
@@ -376,7 +376,8 @@ def call_sbatch(args: List[str], bash_script: str, dryrun: bool, verbose=False) 
                 del command[i]
 
     job_id = subprocess.check_output(command, input=bash_script, text=True).strip()
-    print(f'Submitted job ID {job_id}')
+    if verbose and len(job_id) > 0:
+        print(f'Submitted job ID {job_id}')
     return job_id
 
 def command_submit(args):
@@ -421,8 +422,10 @@ def command_submit(args):
             job_id = call_sbatch(sbatch_args, script, args.dryrun, args.verbose)
 
             if trace_jobs:
+                first_trace_job = True
                 for (sbatch_args, script) in array_job.get_trace_jobs(job_id):
-                    call_sbatch(sbatch_args, script, args.dryrun, args.verbose)
+                    call_sbatch(sbatch_args, script, args.dryrun, args.verbose and first_trace_job)
+                    first_trace_job = False
 
             if not args.dryrun:
                 for i,n in array_job.index_to_name.items():
