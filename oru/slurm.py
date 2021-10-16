@@ -10,6 +10,7 @@ from .logging import TablePrinter
 import copy
 from functools import lru_cache
 import dataclasses
+import enum
 
 class SLURM_INFO:
     TIME = 'time'
@@ -42,6 +43,12 @@ SLURM_INFO_REQUIRED_FIELDS = (
     SLURM_INFO.LOG_ERR, # TODO: make optional (need to adjust database)
 )
 
+
+class Profile(enum.Enum):
+    DEFAULT = "default"
+    TEST = "test"
+    TRACE = "trace"
+
 ARGPARSE_SLURMINFO_ARGS = {
     "slurminfo": (("--slurminfo",),
                   {'action': 'store_true',
@@ -53,6 +60,12 @@ ARGPARSE_SLURMINFO_ARGS = {
                      'default': None,
                      'help': "Start slurm-info pipe server. Takes two file desciptors (FD) corresponding to pipes.  "
                              "Reads input from the first file descriptor and writes to the second."
+                     }),
+    "slurmprofile": (("--slurmprofile",),
+                    {'type': str,
+                     'choices': list(v.value for v in Profile.__members__.values()),
+                     'default': 'default',
+                     'help': "Slurm profile"
                      }),
 }
 
@@ -205,12 +218,12 @@ class Experiment:
     ROOT_PATH = Path.cwd()
     PATH_SEP = "_"
 
-    def __init__(self, inputs, outputs, parameters=None):
+    def __init__(self, profile: Profile, inputs, outputs, parameters=None):
         if parameters is None:
             parameters = dict()
 
         v = ExperimentValidator(require_all=True)
-
+        self.profile = profile
         self.inputs = _validate_and_raise(v, inputs, _strip_custom_keywords(self.INPUTS, False))
         self.outputs = _validate_and_raise(v, outputs, _strip_custom_keywords(self.OUTPUTS, False))
         self.parameters = _validate_and_raise(v, parameters, _strip_custom_keywords(self.PARAMETERS, False))
@@ -239,6 +252,7 @@ class Experiment:
         paramsfile = inputs.pop("load_params")
         slurminfo = inputs.pop("slurminfo")
         pipe_slurminfo = inputs.pop('p_slurminfo')
+        profile = Profile(inputs.pop('slurmprofile'))
 
         def convert_types_json(x):
             if isinstance(x, Path):
@@ -265,7 +279,7 @@ class Experiment:
         if paramsfile is not None:
             with open(paramsfile, 'r') as fp:
                 parameters = json.load(fp)
-        experiment = cls(inputs, {}, parameters)
+        experiment = cls(profile, inputs, {}, parameters)
 
         if slurminfo:
             print(json.dumps(experiment.get_slurminfo(), default=convert_types_json, indent='\t'))
