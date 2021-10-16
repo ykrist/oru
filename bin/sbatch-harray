@@ -341,6 +341,7 @@ class SlurmArrayJob:
         sbatch_opts['err'] =  os.path.join(SLURM_LOG_DIR, '%A_%a.err')
         if self.name is not None:
             sbatch_opts["job-name"] = self.name
+        sbatch_opts["array"] = format_indices(self.indices)
         return get_sbatch_args(sbatch_opts)
 
 
