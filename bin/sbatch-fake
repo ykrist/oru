@@ -5,9 +5,6 @@ import re
 import os
 import datetime
 import sys
-import sqlite3
-
-
 
 def check_matches_regexp(pattern):
     def check(string):
@@ -17,7 +14,7 @@ def check_matches_regexp(pattern):
     return check
 
 def check_file_exists(path):
-    if not os.path.exists(path):
+    if path is not None and not os.path.exists(path):
         raise FileNotFoundError(path)
     return path
 
@@ -26,7 +23,7 @@ def array_indices(string):
 
 if __name__ == '__main__':
     sbatch = argparse.ArgumentParser()
-    sbatch.add_argument("script", nargs=1,type=check_file_exists)
+    sbatch.add_argument("script", nargs='?', type=check_file_exists)
     sbatch.add_argument("args", nargs='*')
     sbatch.add_argument('-a', '--array', nargs=1, type=array_indices)
     sbatch.add_argument('-A', '--account', nargs=1)
@@ -133,8 +130,12 @@ if __name__ == '__main__':
 
     args = sbatch.parse_args()
 
-    slurm_id = random.randint(100000,
-                              199999)
+    slurm_id = random.randint(100000,199999)
+
+    if args.script is None:
+        sys.stdin.read()
+
+
     if args.test_only:
         t = datetime.datetime.now().isoformat(timespec='seconds')
         print(f'sbatch: Job {slurm_id:d} to start at {t} using 1 processors on PARTITION', file=sys.stderr)

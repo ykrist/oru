@@ -313,27 +313,22 @@ class SlurmArrayJob:
         script = self.script_preamble + '\ncase $SLURM_ARRAY_TASK_ID in\n'
         for i,command in self.index_cmd.items():
             script += '{})\n\t{}\n'.format(i, " ".join(command))
-
-            if i in self.trace_jobs:
-                tj = self.trace_jobs[i].copy()
-                child_script = tj.pop("script")
-                child_script += "\n" + " ".join(tj.pop("command"))
-                child_script = textwrap.indent(child_script, "\t\t")
-                sbatch_trace_args = get_sbatch_args(tj)
-                assert len(sbatch_trace_args) % 2 == 0
-                script += f"\tif [[ $? -ne 0 ]] ; then\n\t\tsbatch\\"
-
-                for arg, val in zip(sbatch_trace_args[::2], sbatch_trace_args[1::2]):
-                    script += f"\n\t\t{arg} {val}\\"
-
-                script += f"\n\t\t<<- \"EOF\"\n{child_script}\n\t\tEOF\n\tfi\n"
-
-
-
             script += ";;\n"
 
         script += 'esac\n'
         return script
+
+    def get_trace_jobs(self, job_id: str) -> List:
+        trace_jobs = []
+        for i in self.indices:
+            tj = self.trace_jobs[i].copy()
+            script = tj.pop("script")
+            script += "\n" + " ".join(tj.pop("command"))
+            sbatch_args = get_sbatch_args(tj)
+            sbatch_args.append("-d")
+            sbatch_args.append(f"afternotok:{job_id}_{i}")
+            trace_jobs.append((sbatch_args, script))
+        return trace_jobs
 
     def get_sbatch_args(self):
         sbatch_opts = self.sbatch_opts.copy()
@@ -351,6 +346,21 @@ def get_sbatch_args(sbatch_opts: Dict[str, str]):
         sbatch_args.extend(("--" + key, str(val)))
     return sbatch_args
 
+def call_sbatch(args: List[str], bash_script: str, dryrun: bool, verbose=False) -> str:
+    command = SBATCH_COMMAND + args
+    if dryrun:
+        command.append("--test-only")
+
+    if verbose:
+        print("-" * 80)
+        print(" ".join(command))
+        print(pygments.highlight(bash_script, BashLexer(), Terminal256Formatter(style='monokai')))
+        print("-" * 80)
+
+    job_id = subprocess.check_output(command, input=bash_script, text=True).strip()
+    print(f'Submitted job ID {job_id}')
+    return job_id
+
 def command_submit(args):
     commands, slurm_array_job_indices = parse_target(args)
     commands = [list(filter(lambda x : x != '--', c)) for c in commands]
@@ -364,17 +374,13 @@ def command_submit(args):
         index_slurm_info, trace_slurm_info = index_slurm_info[:len(commands)],  index_slurm_info[len(commands):]
         for tj, c in zip(trace_slurm_info, trace_commands):
             tj["command"] = c
+        trace_jobs = True
     else:
         index_slurm_info = retrieve_slurm_info_pipe_server(commands)
         trace_slurm_info = [None] * len(commands)
+        trace_jobs = False
 
     array_jobs : Dict[frozendict, SlurmArrayJob] = {}
-
-    # try:
-    # except SlurmInfoError as e:
-    #     print(f"warning: {e.args[0]}: command `{' '.join(e.args[1])}` failed:\n\t{type(e.args[2]).__name__}: {e.args[2]!s}")
-    #     print("Spawning individual processes instead")
-    #     index_slurm_info = asyncio.run(retrieve_slurm_info(commands))
 
     for command, slurm_info, trace, (a_id, j_id) in zip(commands, index_slurm_info, trace_slurm_info, slurm_array_job_indices):
         group_key = list((k,slurm_info.pop(k)) for k in list(slurm_info.keys()) if k in SLURM_INFO_AGGREGATABLE)
@@ -392,38 +398,19 @@ def command_submit(args):
 
     with shelve.open(DATABASE_FILE) as db:
         for array_job in array_jobs.values():
-            bash_script_contents = array_job.get_job_script()
-            bash_script_file = tempfile.NamedTemporaryFile(mode='w', delete=False)
-            bash_script_file.write(bash_script_contents)
-            bash_script_file.close()
+            script = array_job.get_job_script()
+            sbatch_args = array_job.get_sbatch_args()
+            job_id = call_sbatch(sbatch_args, script, args.dryrun, args.verbose)
 
-            command = SBATCH_COMMAND + array_job.get_sbatch_args()
-            if args.dryrun:
-                command.append('--test-only')
-            command.append(bash_script_file.name)
-
-            if args.verbose:
-                print("-" * 80)
-                print(" ".join(command))
-                print(bash_script_file.name.center(80, '-'))
-                print(pygments.highlight(bash_script_contents, BashLexer(), Terminal256Formatter(style='monokai')))
-                print("-" * 80)
-
-            result = subprocess.run(command, stdout=subprocess.PIPE, text=True)
-
-            if result.returncode != 0:
-                os.remove(bash_script_file.name)
-                panic(f"command `{' '.join(command)}` exit with nonzero status {result.returncode:d}:")
+            if trace_jobs:
+                for (sbatch_args, script) in array_job.get_trace_jobs(job_id):
+                    call_sbatch(sbatch_args, script, args.dryrun, args.verbose)
 
             if not args.dryrun:
-                job_id = result.stdout.strip()
                 for i,n in array_job.index_to_name.items():
                     out,err = array_job.index_to_logs[i]
                     db[f'{job_id}_{i}'] = {'name' : n, 'err' : err, 'out' : out}
                 db.sync()
-                print(f'Submitted job ID {job_id}')
-
-            os.remove(bash_script_file.name)
 
 
 def command_list(args):
