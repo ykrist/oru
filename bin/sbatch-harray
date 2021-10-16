@@ -328,6 +328,8 @@ class SlurmArrayJob:
             script += textwrap.dedent(f"""
             if [[ `sacct -u "{USER}" -n -X -j {job_id}_{i} -o 'state%-80'` =~ 'FAILED' ]] ; then 
                 {cmd}
+            else 
+                echo "Trace job skipped: triggering job was not in FAILED state."
             fi
             """)
             sbatch_args = get_sbatch_args(tj)
