@@ -357,6 +357,15 @@ def call_sbatch(args: List[str], bash_script: str, dryrun: bool, verbose=False) 
         print(pygments.highlight(bash_script, BashLexer(), Terminal256Formatter(style='monokai')))
         print("-" * 80)
 
+    if dryrun:
+        while True:
+            try:
+                i = command.index("-d")
+                command.remove(i+1)
+                command.remove(i)
+            except ValueError:
+                break
+
     job_id = subprocess.check_output(command, input=bash_script, text=True).strip()
     print(f'Submitted job ID {job_id}')
     return job_id
