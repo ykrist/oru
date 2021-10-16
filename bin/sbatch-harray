@@ -23,6 +23,7 @@ import itertools
 import textwrap
 import io
 
+USER = os.getlogin()
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),'.sbatch-harray.data.d')
 DATABASE_FILE = os.path.join(DATA_DIR, 'db')
 SLURM_LOG_DIR = os.path.join(DATA_DIR, 'logs')
@@ -323,7 +324,12 @@ class SlurmArrayJob:
         for i in self.indices:
             tj = self.trace_jobs[i].copy()
             script = tj.pop("script")
-            script += "\n" + " ".join(tj.pop("command"))
+            cmd = " ".join(tj.pop("command"))
+            script += textwrap.dedent(f"""
+            if [[ `sacct -u "{USER}" -n -X -j {job_id}_{i} -o 'state%-80'` =~ 'FAILED' ]] ; then 
+                {cmd}
+            fi
+            """)
             sbatch_args = get_sbatch_args(tj)
             sbatch_args.append("-d")
             sbatch_args.append(f"afternotok:{job_id}_{i}")
