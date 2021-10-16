@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+import argparse
+import os
+import subprocess
+
+p = argparse.ArgumentParser(description="Cancels all Slurm jobs the current user has which are in the DependencyNeverSatisfied state")
+p.parse_args()
+user = os.getlogin()
+output = subprocess.check_output(["squeue", "-h", "-u", user, "-O", "jobid,reason:24",], text=True)
+output = ([tuple(s.split()) for s in output.splitlines()])
+
+cancel_list = [jobid for jobid, state in output if state == 'DependencyNeverSatisfied']
+if cancel_list:
+    subprocess.run(["scancel", "-u", user] + cancel_list, check=True)
+    print(f"canceled {len(cancel_list)} jobs")
+else:
+    print("no jobs cancelled")
+
