@@ -21,7 +21,7 @@ from pygments.formatters.terminal256 import Terminal256Formatter
 import json
 import itertools
 import textwrap
-import io
+from pathlib import Path
 
 USER = os.getlogin()
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),'.sbatch-harray.data.d')
@@ -458,13 +458,17 @@ def command_list(args):
                 raise UserError(f'job id not found: {i}')
 
 def command_clear(args):
-    if len(glob.glob(os.path.join(SLURM_LOG_DIR, '*.out'))) > 0:
+    if len(glob.glob(os.path.join(SLURM_LOG_DIR, '*.out'))) > 0 and not args.force:
         raise UserError('pending logs still exist, run `sbatch-harray push` first.')
 
     for f in glob.glob(DATABASE_FILE + '.*'):
         os.remove(f)
     print('database cleared.')
-
+    if args.force:
+        for p in Path(SLURM_LOG_DIR).iterdir():
+            p.unlink()
+        print("pending logs deleted.")
+    
 def command_push(args):
     check_sbatch()
     running_jobs = set(retrieve_queue_job_ids())
@@ -546,6 +550,8 @@ if __name__ == '__main__':
     list_.add_argument('-r', '--regexp', action='store_true', help='Treat JOBIDs as Perl-compatible regular expressions.')
 
     clear = subparsers.add_parser('clear', help='Clear all database entries.')
+    clear.add_argument("-f", "--force", action='store_true',
+                       help="Delete any pending logs as well.")
     clear.set_defaults(func=command_clear)
 
     push = subparsers.add_parser('push', help='Push pending log files to their destinations.  Only affects jobs not '
