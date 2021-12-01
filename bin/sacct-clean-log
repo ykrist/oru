@@ -51,7 +51,7 @@ def process_sacct_log(filename : str) -> pd.DataFrame:
     batch_steps.index = batch_steps.index.map(lambda x : x.rstrip('.batch'))
     jobs.update(batch_steps)
     jobs.dropna(axis=1, how='all', inplace=True)
-    id_cols = [c for c in jobs.columns if 'ID' in c]
+    id_cols = [c for c in jobs.aggregators if 'ID' in c]
     jobs[id_cols] = jobs[id_cols].astype(np.int)
     jobs = jobs.applymap(parse_slurm_si_unit)
     jobs['ReqMem'] = jobs['ReqMem'].apply(lambda x : parse_slurm_si_unit(x.rstrip('n')))
