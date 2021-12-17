@@ -31,25 +31,6 @@ SLURM_LOG_DIR = os.path.join(DATA_DIR, 'logs')
 SBATCH_COMMAND = ['sbatch', '--parsable']
 SBATCH_FAKE = False
 
-SLURM_INFO_AGGREGATABLE = {
-    'mem',
-    'cpus-per-task',
-    'tasks-per-node',
-    'nodes',
-    'mail-user',
-    'mail-type',
-    'constraint',
-    'time',
-    'script',
-    'job-name',
-}
-
-SLURM_INFO_NOT_AGGREGATABLE = {
-    'name',
-    'out',
-    'err'
-}
-
 
 class ArgSepToken(IntEnum):
     SEP = 0b00
@@ -402,7 +383,7 @@ def command_submit(args):
     array_jobs : Dict[frozendict, SlurmArrayJob] = {}
 
     for command, slurm_info, trace, (a_id, j_id) in zip(commands, index_slurm_info, trace_slurm_info, slurm_array_job_indices):
-        group_key = list((k,slurm_info.pop(k)) for k in list(slurm_info.keys()) if k in SLURM_INFO_AGGREGATABLE)
+        group_key = list((k,slurm_info.pop(k)) for k in list(slurm_info.keys()) if oru.slurm.SLURM_INFO_PARAMETERS[k].aggregatable)
         group_key.append(('proto_id', str(a_id)))
         group_key = frozendict(group_key)
         if group_key not in array_jobs:

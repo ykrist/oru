@@ -12,37 +12,50 @@ from functools import lru_cache
 import dataclasses
 import enum
 
+@dataclasses.dataclass(frozen=True, eq=True)
+class SlurmParameter:
+    name: str
+    required : bool = False
+    aggregatable: bool = True
+
+
 class SLURM_INFO:
-    TIME = 'time'
-    JOB_NAME = 'job-name'
-    NAME = 'name'
-    MAIL_USER = 'mail-user'
-    MAIL_TYPE = 'mail-type'
-    NODES = 'nodes'
-    MEMORY = 'mem'
-    CPUS_PER_TASK = 'cpus-per-task'
-    CONSTRAINT = 'constraint'
-    SCRIPT = 'script'
-    LOG_OUT = 'out'
-    LOG_ERR = 'err'
+    TIME = SlurmParameter('time')
+    JOB_NAME = SlurmParameter('job-name')
+    NAME = SlurmParameter('name', aggregatable=False)
+    MAIL_USER = SlurmParameter('mail-user')
+    MAIL_TYPE = SlurmParameter('mail-type')
+    NODES = SlurmParameter('nodes')
+    MEMORY = SlurmParameter('mem')
+    CPUS_PER_TASK = SlurmParameter('cpus-per-task')
+    CONSTRAINT = SlurmParameter('constraint')
+    SCRIPT = SlurmParameter('script', required=True)
+    LOG_OUT = SlurmParameter('out', aggregatable=False, required=True)
+    LOG_ERR = SlurmParameter('err', aggregatable=False, required=True) # TODO: make optional (need to adjust database)
+    EXCLUDE = SlurmParameter("exclude")
+    NODELIST = SlurmParameter("nodelist")
 
-SLURM_INFO_OPTIONAL_FIELDS = (
-    SLURM_INFO.NAME,
-    SLURM_INFO.JOB_NAME,
-    SLURM_INFO.TIME,
-    SLURM_INFO.MAIL_USER,
-    SLURM_INFO.MAIL_TYPE,
-    SLURM_INFO.NODES,
-    SLURM_INFO.MEMORY,
-    SLURM_INFO.CPUS_PER_TASK,
-    SLURM_INFO.CONSTRAINT,
-)
-SLURM_INFO_REQUIRED_FIELDS = (
-    SLURM_INFO.SCRIPT,
-    SLURM_INFO.LOG_OUT,
-    SLURM_INFO.LOG_ERR, # TODO: make optional (need to adjust database)
-)
+SLURM_INFO_PARAMETERS : Dict[str, SlurmParameter] = {
+    p.name: p    
+    for p in SLURM_INFO.__dict__.values() if isinstance(p, SlurmParameter)
+}
+# SLURM_INFO_OPTIONAL_FIELDS = (
+#     SLURM_INFO.NAME,
+#     SLURM_INFO.JOB_NAME,
+#     SLURM_INFO.TIME,
+#     SLURM_INFO.MAIL_USER,
+#     SLURM_INFO.MAIL_TYPE,
+#     SLURM_INFO.NODES,
+#     SLURM_INFO.MEMORY,
+#     SLURM_INFO.CPUS_PER_TASK,
+#     SLURM_INFO.CONSTRAINT,
+#     SLURM_INFO.EXCLUDE,
+#     SLURM_INFO.NODELIST,
+# )
 
+SLURM_INFO_REQUIRED_FIELDS = [
+    p for p in SLURM_INFO_PARAMETERS.values() if p.required
+]
 
 class Profile(enum.Enum):
     DEFAULT = "default"
@@ -91,13 +104,12 @@ def slurm_parse_time(s : str) -> int:
 def parse_slurm_info(jsonstr):
     info = json.loads(jsonstr)
     info_fields = set(info.keys())
-    missing_req_fields= set(SLURM_INFO_REQUIRED_FIELDS) - info_fields
+    missing_req_fields= set(p.name for p in SLURM_INFO_REQUIRED_FIELDS) - info_fields
     if len(missing_req_fields) > 0:
         raise KeyError(f"Missing required JSON fields:\n\t" + "\n\t".join(missing_req_fields))
-    unknown_fields = info_fields - set(SLURM_INFO_REQUIRED_FIELDS + SLURM_INFO_OPTIONAL_FIELDS)
+    unknown_fields = info_fields - set(SLURM_INFO_PARAMETERS)
     if len(unknown_fields) > 0:
         raise KeyError(f"Unknown JSON fields:\n\t" + "\n\t".join(unknown_fields))
-    # non_slurm_info = {key : info.pop(key) for key in ["script"]}
     return info
 
 
@@ -434,25 +446,36 @@ class Experiment:
     def resource_slurm_script(self):
         raise NotImplementedError
 
+    @property
+    def resource_exclude(self) -> str:
+        return None
+
+    @property
+    def resource_nodelist(self) -> str:
+        return None
+
+
     def get_slurminfo(self):
         cl_opts = {
-            "time" : self.resource_time,
-            "job-name" : self.resource_job_name,
-            "name" : self.resource_name,
-            "out" : self.resource_stdout_log,
-            "err" : self.resource_stderr_log,
-            "mem" : self.resource_memory,
-            "cpus-per-task" : self.resource_cpus,
-            "nodes" : self.resource_nodes,
-            "mail-user" : self.resource_mail_user,
-            "mail-type" : self.resource_mail_type,
-            "constraint" : self.resource_constraints,
-            "script" : self.resource_slurm_script,
+            SLURM_INFO.TIME.name : self.resource_time,
+            SLURM_INFO.JOB_NAME.name : self.resource_job_name,
+            SLURM_INFO.NAME.name : self.resource_name,
+            SLURM_INFO.LOG_OUT.name : self.resource_stdout_log,
+            SLURM_INFO.LOG_ERR.name : self.resource_stderr_log,
+            SLURM_INFO.MEMORY.name : self.resource_memory,
+            SLURM_INFO.CPUS_PER_TASK.name : self.resource_cpus,
+            SLURM_INFO.NODES.name : self.resource_nodes,
+            SLURM_INFO.MAIL_USER.name : self.resource_mail_user,
+            SLURM_INFO.MAIL_TYPE.name : self.resource_mail_type,
+            SLURM_INFO.CONSTRAINT.name : self.resource_constraints,
+            SLURM_INFO.SCRIPT.name : self.resource_slurm_script,
+            SLURM_INFO.EXCLUDE.name : self.resource_exclude,
+            SLURM_INFO.NODELIST.name : self.resource_nodelist,
         }
-        assert set(cl_opts.keys()) == set(SLURM_INFO_OPTIONAL_FIELDS + SLURM_INFO_REQUIRED_FIELDS)
+        assert set(cl_opts) == set(SLURM_INFO_PARAMETERS)
         cl_opts = dict(filter(lambda kv : kv[1] is not None, cl_opts.items()))
-        if "mail-user" not in cl_opts and "mail-type" in cl_opts:
-            del cl_opts['mail-type']
+        if SLURM_INFO.MAIL_USER.name not in cl_opts and SLURM_INFO.MAIL_TYPE.name in cl_opts:
+            del cl_opts[SLURM_INFO.MAIL_TYPE.name]
 
         return cl_opts
 
@@ -530,11 +553,18 @@ class SlurmInfo:
     cpus : int = None
     constraint : str = None
     name: str = None
+    exclude: str = None
+    nodelist: str = None
 
     def to_json_dict(self):
         d = dataclasses.asdict(self)
-        name_map = {'log_out' : 'out', 'log_err' : 'err', 'cpus' : 'cpus-per-task', 'memory' : 'mem'}
-        d['time'] = slurm_format_time(d['time'])
+        name_map = {
+            'log_out' : SLURM_INFO.LOG_OUT.name, 
+            'log_err' : SLURM_INFO.LOG_ERR.name, 
+            'cpus' : SLURM_INFO.CPUS_PER_TASK.name, 
+            'memory' : SLURM_INFO.MEMORY.name
+        }
+        d[SLURM_INFO.TIME.name] = slurm_format_time(d[SLURM_INFO.TIME.name])
         return {name_map.get(k, k.replace('_', '-')) : str(v) for k,v in d.items() if v is not None}
 
 
