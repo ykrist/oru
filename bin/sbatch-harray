@@ -473,21 +473,28 @@ def command_push(args):
     check_sbatch()
     running_jobs = set(retrieve_queue_job_ids())
     with shelve.open(DATABASE_FILE) as db:
-        for out in glob.glob(os.path.join(SLURM_LOG_DIR, '*.out')):
-            slurm_id = os.path.basename(out).rstrip('.out')
+        for out in Path(SLURM_LOG_DIR).glob('*.out'):
+            slurm_id = out.stem
             if slurm_id in running_jobs:
                 continue
 
-            err = out.rstrip('.out') + '.err'
-            if not os.path.exists(err):
-                panic(f'{slurm_id} has a STDOUT file but not STDERR')
+            err = out.with_suffix('.err')
 
             db_row = db[slurm_id]
-            out_dest = db_row['out']
-            err_dest = db_row['err']
-            for src,dest in [(out,out_dest), (err, err_dest)]:
+            
+            srcs = [out]
+            dests = [Path(db_row['out'])]
+
+            if not err.exists():
+                print(f'{slurm_id} has a STDOUT file but not STDERR')
+            else:
+                srcs.append(err)
+                dests.append(Path(db_row['err']))
+
+
+            for src, dest in zip(srcs, dests):
                 try:
-                    shutil.copyfile(src,dest)
+                    shutil.copyfile(src, dest)
                     remove = True
                 except FileNotFoundError:
                     print(f"error creating logfile {src}: missing directory {dest}")
@@ -495,8 +502,8 @@ def command_push(args):
                     remove = False
 
             if remove:
-                os.remove(out)
-                os.remove(err)
+                for src in srcs:
+                    src.unlink()
 
 def check_sbatch():
     global SBATCH_COMMAND, SBATCH_FAKE
