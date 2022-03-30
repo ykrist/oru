@@ -47,7 +47,7 @@ DEFAULT_RESOLVE_PATTERN = re.compile('\.json$')
 
 def resolve_files(val, rootpath : Path, regexp : re.Pattern = DEFAULT_RESOLVE_PATTERN, callback=None, depth=None) -> dict:
     if depth is None:
-        new_depth = 0
+        new_depth = None
     elif depth <= 0:
         return val
     else:
